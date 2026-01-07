@@ -1,216 +1,238 @@
-> [!NOTE]
-> The data and scripts for paper "Fragmentation Harmonization for the Arm Ecosystem: A Unified Method to Measure Memory Bandwidth via Network-on-Chip" can be found in [https://github.com/solecnugit/paper-arm-mem-bw](https://github.com/solecnugit/paper-arm-mem-bw). 
+TODO: 修改为 hperf 的 README
+
 # hperf
 
-hperf (Hierarchical Performance Profiling Tools) is a microarchitectural performance data collection tool across platforms on Linux operating system that can be used to characterize workloads at the microarchitectural level with features such as
+微架构数据采集工具，相较于 simpleperf stat 的优势：
 
-- Efficient collection of performance data for components at the microarchitectural level during workload runtime, including aspects such as instruction pipelines, caches, branch predictors, etc.
-- Output reliable and easily digestible microarchitecture performance metrics to provide a comprehensive workload performance characterization to identify optimization opportunities.
+- 测量效率提高：通过复用计数器的方法，处理需要测量的性能指标数量大于可用性能计数器数量的冲突，能在一次测量中获得需要的所有指标；
+- 开销降低：通过事件分组，以事件组为单位进行控制与计数值读取，大幅减少测量过程中系统调用次数。
 
-> Chinese version of README is available. Check [here](README.zh.md).
+## 编译与安装
 
-## Publications
+项目使用 CMake 构建，工具链由 NDK 提供，构建时需要指定 CPU 型号。
 
-Efficient Cross-platform Multiplexing of Hardware Performance Counters via Adaptive Grouping
+> 开发使用的 NDK 版本：29.0.13599879
 
-Tong-yu Liu, Jianmei Guo, Bo Huang
+目前已经预设两组构建配置：
 
-ACM Trans. Arch. Code Optim. 
+- `android-arm64-oryon` 适用于高通 SM8750，SM8850 等采用高通自研 Oryon 核心的 SoC 平台
+- `android-arm64-cortex-x4` 适用于 MTK 等使用 Arm 公版核心的 SoC 平台
 
-https://dl.acm.org/doi/10.1145/3629525
+构建前，确保环境变量 `NDK_HOME` 指向 NDK 的根目录（即有 `ndk-build`，`ndk-gdb` 等可执行程序的目录）。
 
-## Background
-
-hperf is developed based on Linux perf, which is implemented by building a layer of encapsulation on top of perf. Our purposes are: 
-
-- Collecting comprehensive microarchitectural performance data by perf requires users to know about microarchitecture performance events across different platforms. hperf generalizes the differences between platforms to provide cross-platform support. Users can use hperf to obtain uniform microarchitectural performance metrics without caring about the differences in performance events across different microarchitectures.
-- Using perf to efficiently and reliably collect microarchitectural performance data requires users to understand the architecture of the Performance Monitoring Units (PMU) of different microarchitectures, especially the types and numbers of Performance Monitoring Counters (PMC) included; they also need to understand how to handle the problem when the number of required performance events is more than the number of available PMCs. Understanding how to leverage the Linux perf_event subsystem's scheduling strategy for events when the number of required performance events is more than the number of available PMCs, to achieve more efficient scheduling while ensuring reliable derived performance metrics. This requires a high level of domain-specific knowledge from the user, so hperf encapsulates the corresponding measurement scheme for each platform. Therefore, the user does not have to understand the internal details and can obtain the corresponding performance metrics directly through hperf.
-
-## Installation
-
-First, clone the source code of hperf from the code repository.
-
-hperf is developed using Python and does not require the execution of a specific installer. The current version has the following dependencies
-
-* Data processing
-    * numpy
-    * pandas
-* Visualization
-    * matplotlib
-* remote SSH connection
-    * paramiko
-
-The user can use Python's package management tools (pip or Anaconda) to enable the current system's Python environment to import the appropriate dependency packages.
-
-The `environment.yml` file in the code repository records the relevant dependencies, and in the case of Anaconda, the following command can be used to create and activate the environment named hperf.
+在仓库根目录，选择一组预设配置生成构建目录，例如：
 
 ```
-$ conda env create --file environment.yml
-$ conda activate hperf
+$ cmake --preset android-arm64-oryon
 ```
 
-In addition to this, hperf needs to invoke perf for performance profiling tasks, so you need to ensure that the machine to be tested has perf installed and can execute the `perf` command from the command line.
+这会生成该预设配置的构建目录 `/build/android-arm64-oryon/`。
 
-Since perf is part of the Linux kernel tools, the version of perf is the same as the kernel version. For newer machines, it is recommended to upgrade the kernel to a higher version.
-
-## Usage
-
-In the code repository, `hperf.py` is the entry point for hperf, so the way to use hperf is
+接着执行构建操作：
 
 ```
-$ python hperf.py [options] <command> 
+$ cmake --build --preset android-arm64-oryon
 ```
 
-The options parameter `[options]` is non-required, and if not specified, hperf performs performance profiling according to the default behavior, while the positional parameter `<command>` is required and must be located at the end of the command line.
+这会在构建目录生成 `hperf` 的可执行程序。
 
-### Supported options
-
-Options supported by the current version of hperf.
-
-| options               | description            |
-| :-------------------: | :--------------------: |
-| `-h` \| `-help`       | show hperf help information, including supported options and usage. |
-| `-V` \| `--version`   | show the version of hperf. |
-| `-tmp-dir TMP_DIR_PATH`            | specify a temporary folder to store scripts for performance analysis and the corresponding output, log files, raw performance data, results files, etc. If not declared, the default is `/tmp/hperf/`. |
-| `-r SSH_CONN_STR` \| `--remote SSH_CONN_STR` | specify the system under test as a remote host. You need to specify the host address and username to be used to establish the SSH connection, in the format of `<username>@<hostname>`. If not declared, the system under test is the local host. |
-| `-v` \| `--verbose`   | show DEBUG information, if not declared, the default is not output. |
-| `-c CPU_ID_LIST` \| `--cpu CPU_ID_LIST`       | specify the aggregated range of the performance metric, declared as a list of processor IDs, which can be concatenated (`-`) with a comma (`,`), e.g. `5-8,9,10`. |
-
-Note: The `-c` option does not affect the measurement, only the processing of the raw performance data after the measurement.
-
-### Pre-run environment check
-
-The purpose of the environment check of hperf for the SUT before performing measurements is to ensure that hperf has exclusive access to the hardware PMCs, which ensures the reliability and accuracy of microarchitecture performance data.
-
-The checks for the current version of hperf include: 
-
-* whether other profilers are already running, such as Intel VTune, perf, etc. (since performance profilers are highly likely to occupy PMCs)
-* whether the NMI watchdog has been disabled for x86 architecture (because the NMI watchdog will occupy a generic PMC)
-
-If hperf checks for the above issues, it will prompt accordingly, at which point the command line will wait for the user to type in a command to determine whether to proceed with the measurement in such a case.
-
-For example, if the machine to be measured has VTune running at this point, then hperf will give the following output:
+此外，在执行构建时，可以直接将构建产物部署到移动端：
 
 ```
-2023-01-05 15:24:52,767 INFO     hperf v1.0.0
-2023-01-05 15:24:52,767 INFO     test directory: /tmp/hperf/20230105_test003
-2023-01-05 15:24:52,937 WARNING  sanity check: process may interfere with measurement exists. /opt/intel/oneapi/vtune/2023.0.0/bin64/emon
-
-Detected some problems which may interfere with profiling. Continue profiling? [y|N] 
+cmake --build --preset android-arm64-oryon --target deploy
 ```
 
-If the user types `n`/`N`, then hperf runs to the end; if the user types `y`/`Y`, then hperf will perform the measurement.
+这会将可执行程序推送到移动端设备的 `/data/local/tmp/` 目录下，并且赋予执行权限。
 
-### Remote SUT Connection
+## 运行
 
-If the `-r SSH_CONN_STR` option is specified, then hperf will establish an SSH connection to the remote system under test. 
-For example, if you need to log in to the machine under test with hostname `example.com` using the username `john`, then the command to invoke hperf should be: 
+使用 `-h` 选项列出使用说明与测量的性能事件。
 
-```
-$ python hperf.py -r john@example.com sleep 5
-```
+### 模式1: 全局测量
 
-At this point, hperf will interactively prompt the user for a password on the command line, and the user types the password on the command line, for example:
+全量采集，会收集每个 CPU 的 PMU 数据，开销较大：
 
 ```
-2023-02-04 16:39:59,255 INFO     hperf v1.1.0
-connect to john@example.com, and enter the password for user john:
+$ adb root
+$ adb shell
+[以 root 身份进入 adb shell]
+# cd /data/local/tmp
+# ./hperf -a -d 10 -i 1000 -o system.csv
 ```
 
-If the connection is successful, the subsequent measurement tasks are executed; if the connection fails, a relevant message is prompted, and the run ends.
+`-a` 指定全局测量，`-d 10` 采集时间 10s，`-i 1000` 复用间隔 1000ms，`-o system.csv` 原始数据以 CSV 格式输出到 system.csv 文件中。
 
-### Measurements
+> 若不加 `-o` 选项，原始数据将直接输出到控制台。
 
-hperf measures the entire system of the machine under test during workload execution, in other words, it collects performance data for all processors of the entire system.
+原始数据格式：`timestamp,cpu,group,event,value` 时间戳，CPU ID，事件组序号，事件名称，在此间隔内的事件计数值。
 
-hperf starts performance monitoring when the workload starts, and stops performance monitoring when the workload finishes running.
+### 模式2: 跟踪进程
 
-For real applications that run continuously, such as a Redis database service running continuously on a server, if you need to measure the real application for a period of time, you can use `sleep <n>` as the workload while it is running normally, where `<n>` is the measured event (in s).
-
-Microarchitecture performance metrics supported by the current version of hperf: 
-
-* Instruction pipeline effectiveness
-    * Cycles Per Instruction (CPI)
-* Cache
-    * L1 Cache Misses Per Kilo Instructions (L1 Cache MPKI)
-    * L2 Cache Misses Per Kilo Instructions (L2 Cache MPKI)
-    * L3 Cache Misses Per Kilo Instructions (L3 Cache MPKI)
-* Branch Prediction
-    * Branch Misprediction Rate
-* Memory Controller
-    * Memory Bandwith
-* Instruction Mix
-
-### Cases
-
-#### Workload characterization of single- or multi-threaded programs
-
-For a matrix multiplication executable with the path `. /test/mat_mul`, a parameter needs to be passed at runtime to measure its runtime microarchitectural performance metrics using hperf, where the temporary folder is specified as `. /tmp/`, then the command to invoke hperf is
+指定进程号，仅收集该进程的 PMU 数据：
 
 ```
-$ python hperf.py --tmp-dir . /tmp -c 5 taskset -c 5 . /test/mat_mul 128
+$ adb root
+$ adb shell
+[以 root 身份进入 adb shell]
+# cd /data/local/tmp
+# ./hperf -p <pid> -d 3 -i 500 -o process.csv
 ```
 
-Where, since the `mat_mul` program is tied to processor 5, and although hperf is measuring the entire system, the analysis only needs to use the performance data collected on processor 5, the option `-c 5` is used.
+`-p <pid>` 指定跟踪进程测量，进程号是 `<pid>`，`-d 3` 采集时间 3s（采集结束后不影响进程继续运行），`-i 500` 复用间隔 500ms，`-o process.csv` 原始数据以 CSV 格式输出到 process.csv 文件中。
 
-Execution of this command should display the following output.
-
-```
-2022-12-13 16:32:17,226 INFO     hperf v1.0.0
-2022-12-13 16:32:17,226 INFO     test directory: /home/tongyu/project/hperf/tmp/20221213_test006
-2022-12-13 16:32:17,288 INFO     start profiling
-2022-12-13 16:32:43,874 INFO     end profiling
-2022-12-13 16:32:43,908 INFO     save DataFrame to CSV file: /home/tongyu/project/hperf/tmp/20221213_test006/results.csv
-              metric        result
-0           CPU TIME  2.654691e+04
-1             CYCLES  8.739400e+10
-2       INSTRUCTIONS  1.834493e+11
-3                TSC  7.680475e+10
-4           BRANCHES  1.051103e+10
-5      BRANCH MISSES  5.461876e+06
-6    L1 CACHE MISSES  4.168072e+09
-7    L2 CACHE MISSES  3.434293e+09
-8    L3 CACHE MISSES  3.709443e+08
-9   REFERENCE CYCLES  7.679803e+10
-10   CPU UTILIZATION  9.999126e-01
-11               CPI  4.763933e-01
-12     L1 CACHE MPKI  2.272057e+01
-13     L2 CACHE MPKI  1.872067e+01
-14     L3 CACHE MPKI  2.022054e+00
-15  BRANCH MISS RATE  5.196326e-04
-```
-
-From the output, the path to the file where this measurement is stored can be obtained, and the user can look up the files in the relevant directory to understand the execution process of the performance profiling and the intermediate and result files.
-
-For multi-threaded programs, similarly, you should use commands such as `taskset` or `numactl` to bind the corresponding processor, NUMA node, or SOCKET, and then set the option `-c` with a list of corresponding processor IDs as an argument.
-
-#### Workload Characterization for Real Applications
-
-For real workload characterization, you should first start the workload and determine whether to bind processors, NUMA nodes, or SOCKETs as needed. hperf is invoked after the workload has been started to perform performance checks over time.
-
-For example, for the redis-server service, if you bind the specified 4 processors, you can use
+或者附带一个命令行程序，收集该进程的 PMU 数据。
 
 ```
-$ taskset -c 1,3,5,7 . /redis-server
+# ./hperf -i 500 ./ustress/div64_workload 10
 ```
 
-After completing the startup, if you wish to use hperf to analyze the workload for 1 minute, then the command to invoke hperf is
+原始数据格式：`timestamp,cpu,group,event,value` 时间戳，CPU ID，事件组序号，事件名称，在此间隔内的事件计数值。其中 CPU ID 固定为 -1。
+
+> 已知问题：若附带的命令行程序会创建子进程，那么子进程产生的微架构事件不计——部分测试场景会存在问题（例如跟踪一个 shell 脚本，shell 脚本中的命令通常都是子进程）——这个问题可以通过设置事件配置的 inherit 比特位让子进程继承，但 inherit 位和事件组的统一控制是存在冲突的，如果使用 inherit 则每次事件组的调度需要产生大量系统调用，进而产生大量开销。
+> 
+> 临时解决方案：先启动命令行程序，使之后台运行，获得其 PID 后调用 hperf 跟踪，例如：
+> 
+> 不使用
+> `$ ./hperf ./script.sh`
+> 
+> 而是
+> `./script.sh & ./hperf -p $!`
+>
+> 先启动脚本，使用 `&` 让其在后台运行，接着使用 `$!` 环境变量获得其 PID，令其作为命令行选项参数传给 hperf 进行跟踪测量。
+
+当跟踪的进程运行结束后（无论是指定进程号还是指定命令行），或者达到 `-d` 选项指定的测量时间后，hperf 即停止采集数据。
+
+若通过 `-d` 指定采集时间，到达指定时间之后停止采集数据，此时不影响进程继续运行。
+
+> 假设这个程序需要运行 5s，但是命令行指定采集 3s，那么还是只采集 3s 的数据。
+
+### 探测可用性能计数器数量与自适应分组
+
+可以使用 `--detect-counters` 选项探测当前平台每个 CPU 上可用硬件性能计数器的数量。
+
+> simpleperf 也有类似的功能，但是在 MTK 平台通常会失效，hperf 重新实现了探测逻辑。
 
 ```
-$ python hperf.py -c 1,3,5,7 sleep 60
+# ./hperf --detect-counters
+Detecting available programmable counters on each CPU ...
+11 available programmable counters on CPU 0
+11 available programmable counters on CPU 1
+11 available programmable counters on CPU 2
+11 available programmable counters on CPU 3
+11 available programmable counters on CPU 4
+11 available programmable counters on CPU 5
+11 available programmable counters on CPU 6
+11 available programmable counters on CPU 7
 ```
 
-The output is similar to the previous case, so we won't go over it again.
+完成探测后，可用性能计数器的数量可以用于优化事件分组，以最大程度提高性能计数器的利用率与提高测量效率：在测量时，加上 `--optimize-event-groups` 的选项，会基于探测结果优化分组，例如：
 
-## People
+```
+./hperf --optimize-event-groups -a -d 10 -c 7
+Detecting available programmable counters on each CPU ...
+18 available programmable counters on CPU 0
+18 available programmable counters on CPU 1
+18 available programmable counters on CPU 2
+18 available programmable counters on CPU 3
+29 available programmable counters on CPU 4
+29 available programmable counters on CPU 5
+29 available programmable counters on CPU 6
+29 available programmable counters on CPU 7
+Adaptive Grouping:
+Before:
+[0]: { inst_spec, ld_spec, st_spec, dp_spec, vfp_spec, ase_spec, br_immed_spec, br_indirect_spec, br_return_spec }
+[1]: { l1d_cache_refill, l1i_cache_refill, l2d_cache_refill, l3d_cache_refill, l1d_tlb_refill, l1i_tlb_refill, br_mis_pred_retired }
+[2]: { bus_access_rd, bus_access_wr, mem_access_rd, mem_access_rd_percyc, dtlb_walk, itlb_walk, dtlb_walk_percyc, itlb_walk_percyc }
+After:
+[0]: { inst_spec, ld_spec, st_spec, dp_spec, vfp_spec, ase_spec, br_immed_spec, br_indirect_spec, br_return_spec }
+[1]: { l1i_cache_refill, l1i_tlb_refill, l1d_cache_refill, l1d_tlb_refill, l2d_cache_refill, br_mis_pred_retired, l3d_cache_refill, dtlb_walk, itlb_walk, bus_access_rd, bus_access_wr, mem_access_rd, mem_access_rd_percyc, dtlb_walk_percyc, itlb_walk_percyc }
+```
 
-* System Optimization Lab, East China Normal University (SOLE)
+> 由于探测计数器数量需要一定时间，因此做了探测结果的缓存：在同一台机器上，只需要完成一次探测即可，后续会利用缓存的结果进行分组优化。
 
-    * Tong-yu Liu
-    * Huanlun Cheng
-    * Jianmei Guo
-    * Bo Huang
+## 输出
 
-### Contact Information
+数据完成采集后，输出性能事件的统计报告，其中输出的计数值是根据复用计数器各事件占用的事件比例进行估计后的结果。
 
-If you have any questions or suggestions, please contact Tong-yu Liu via tyliu@stu.ecnu.edu.cn . 
+此外还会输出微架构性能指标，指标体系是根据 CPI 拆解的理论构建的，即通过两种不同的拆解方式，判断对 CPI 贡献最大的那一个部分。
+
+例如，在 `android-arm64-cortex-x4` 预设下和天玑 9400+ 平台，输出的性能报告如下：
+
+```
+========== Performance Statistics ==========
+Fixed events (10070.35 ms, 100.00 %)
+  cpu_cycles                     677,438,887
+  cnt_cycles                      18,323,463
+  inst_retired                   425,690,280
+Group 1 (4025.45 ms, 39.97 %)
+  inst_spec                      571,789,107
+  ld_spec                         31,409,556
+  st_spec                        159,663,267
+  dp_spec                        256,171,804
+  vfp_spec                            50,443
+  ase_spec                           333,712
+  br_immed_spec                    3,262,234
+  br_indirect_spec                   874,482
+  br_return_spec                     713,540
+Group 2 (3023.34 ms, 30.02 %)
+  l1d_cache_refill                 3,773,532
+  l1i_cache_refill                16,747,969
+  l2d_cache_refill                13,905,970
+  l3d_cache_refill                 4,538,687
+  l1d_tlb_refill                   3,801,009
+  l1i_tlb_refill                   2,430,739
+  br_mis_pred_retired              3,212,271
+Group 3 (3021.56 ms, 30.00 %)
+  bus_access_rd                   38,515,399
+  bus_access_wr                   10,113,233
+  mem_access_rd                  129,516,746
+  mem_access_rd_percyc         2,718,803,303
+  dtlb_walk                          912,123
+  itlb_walk                          321,088
+  dtlb_walk_percyc               159,531,729
+  itlb_walk_percyc                32,943,594
+=========== Performance Metrics ============
+Pipeline basic metrics:
+  CPI                                 1.5914
+  CPU utilization                    14.00 %
+  Average frequency               0.4806 GHz
+Breakdown based on instruction mix:
+  Load                                5.49 %
+  Store                              27.92 %
+  Integer data processing            44.80 %
+  Floating point                      0.01 %
+  Advanced SIMD                       0.06 %
+  Immediate branch                    0.57 %
+  Indirect branch                     0.15 %
+  Return branch                       0.12 %
+Breakdown based on misses:
+ Cache:
+  L1D cache MPKI                     10.1053
+  L1I cache MPKI                     44.8501
+  L2 cache MPKI                      37.2394
+  L3 cache MPKI                      12.1543
+ TLB:
+  L1D TLB MPKI                       10.1789
+  L1I TLB MPKI                        6.5094
+  DTLB walk PKI                       1.8382
+  ITLB walk PKI                       0.6471
+ Branch predictor:
+  Branch MPKI                         8.6023
+Memory access latency:
+  Memory read latency         20.9919 cycles
+  DTLB walk latency          174.9014 cycles
+  ITLB walk latency          102.5997 cycles
+============================================
+```
+
+> 不同平台由于硬件差异，支持的性能指标存在差异。
+
+若系统全局测量，事件计数值是每个 CPU 上事件计数值之和，并且是估计后的结果。
+
+## 代码开发相关备注
+
+### clangd 相关
+
+clangd 代码提示：会根据 compile_commands.json 进行代码提示，生成构建目录时会自动生成，在 `build/{PresetName}/` 目录下，其中 PresetName 是预设配置的名字。为了使得代码提示生效，需要在 VSCode 配置文件 `.vscode/settings.json` 中设置 `clangd.arguments` 的 `--compile-commands-dir` 指向 compile_commands.json 所在目录，因此在切换预设配置时候，可能需要手动调整一下。
+
+.clang-format 文件，用于按照 Google 风格格式化代码。

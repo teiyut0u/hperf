@@ -1,0 +1,14 @@
+{
+    "clangd.path": "/usr/bin/clangd",
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}/build/", // compile_commands.json 文件的目录位置
+        "--log=verbose", // 让 clangd 输出更详细的日志
+        "--pretty", // 输出的 JSON 文件更美观
+        "--all-scopes-completion", // 全局补全
+        "--completion-style=detailed", // 建议风格：详细，或“bundled”（打包，只给一个建议）
+        "--header-insertion=iwyu", // 允许补充头文件
+        "--header-insertion-decorators", // 输入建议中，已包含头文件的项与还未包含头文件的项会以圆点加以区分
+        "--background-index", // 在后台自动分析文件 基于 complie_commands.json
+    ],
+    "editor.formatOnType": true
+}
