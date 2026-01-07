@@ -5,6 +5,8 @@
 #include <iostream>
 #include <ostream>
 #include <vector>
+#include <cstdint>
+#include <limits>
 
 struct PMUEvent {
   std::string name;

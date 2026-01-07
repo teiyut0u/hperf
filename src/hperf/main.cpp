@@ -11,9 +11,9 @@
 
 #include <errno.h>
 #include <getopt.h>
+#include <sys/wait.h>  // For waitpid
 #include <linux/wait.h>
 #include <signal.h>    // For kill
-#include <sys/wait.h>  // For waitpid
 
 #include <cerrno>
 #include <chrono>
