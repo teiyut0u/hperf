@@ -38,5 +38,8 @@ libs/
 Thumbs.db
 .DS_Store
 
+# vscode config
+.vscode
+
 # Others
 compile_commands.json
