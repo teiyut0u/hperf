@@ -1,30 +1,35 @@
 cmake_minimum_required(VERSION 3.16)
 project(hperf VERSION 0.1.0 LANGUAGES CXX)
 
+# compile setup >>>
 # To generate compile_commands.json for clangd code hinting
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# arm64
+set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
+set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# <<< compile setup
 
-add_executable(${PROJECT_NAME} "${CMAKE_SOURCE_DIR}/src/hperf/main.cpp")
-
-target_include_directories(${PROJECT_NAME} PRIVATE
-    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third/CLI11/include>"
-		"$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-)
-
+# hperf lib >>>
 file(GLOB_RECURSE HPERF_LIB_SOURCES 
     "${CMAKE_SOURCE_DIR}/src/hperf/*/*.cpp"
 )
 
-add_library(${PROJECT_NAME}_lib STATIC ${HPERF_LIB_SOURCES})
+add_library(lib${PROJECT_NAME} STATIC ${HPERF_LIB_SOURCES})
 
-target_include_directories(${PROJECT_NAME}_lib PRIVATE
+target_include_directories(lib${PROJECT_NAME} PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third/CLI11/include>"
 		"$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}_lib)
+# <<< hperf lib
+
+# hperf exe >>>
+add_executable(${PROJECT_NAME} "${CMAKE_SOURCE_DIR}/src/hperf/main.cpp")
+target_link_libraries(${PROJECT_NAME} PRIVATE lib${PROJECT_NAME})
+# <<< hperf exe
 
 # # Users can specify the target CPU type by command-line option, e.g., -DCPU_TYPE=N1
 # # Available CPU type:

@@ -3,6 +3,8 @@
 
 #include "hperf/config/detect_config.hpp"
 
+namespace hperf {
 void detect(const DetectConfig& detect_config);
+}
 
 #endif
