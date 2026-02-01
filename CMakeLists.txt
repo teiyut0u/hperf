@@ -6,8 +6,8 @@ project(hperf VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # arm64
-set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
-set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
+# set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
+# set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

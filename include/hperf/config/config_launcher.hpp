@@ -24,7 +24,7 @@ class ConfigLauncher {
   void add_detect_cmd(CLI::App& app);
   void add_optimize_cmd(CLI::App& app);
   void add_monitor_cmd(CLI::App& app);
-  void add_clean_cmd(CLI::App& app);
+  void add_cache_cmd(CLI::App& app);
 };
 
 }  // namespace hperf

@@ -17,7 +17,7 @@ void hperf::ConfigLauncher::parse(int argc, char* argv[]) {
   this->add_detect_cmd(app);
   this->add_optimize_cmd(app);
   this->add_monitor_cmd(app);
-  this->add_clean_cmd(app);
+  this->add_cache_cmd(app);
 
   // stderr usage if argv is not valid
   try {
@@ -61,27 +61,34 @@ void hperf::ConfigLauncher::add_monitor_cmd(CLI::App& app) {
   });
 }
 
-void hperf::ConfigLauncher::add_clean_cmd(CLI::App& app) {
+void hperf::ConfigLauncher::add_cache_cmd(CLI::App& app) {
   static hperf::CacheConfig cache_config;
-  CLI::App* cache_cmd = app.add_subcommand("cache");
-  CLI::App* cache_clean_cmd = cache_cmd->add_subcommand("clean");
-  CLI::App* cache_list_cmd = cache_cmd->add_subcommand("list");
+  CLI::App* cache_cmd = app.add_subcommand("cache", "Manage cache.");
+  CLI::App* cache_clean_cmd = cache_cmd->add_subcommand("clean", "Clean Specific cache. If not specified, all cache will be cleanned.");
+  CLI::App* cache_list_cmd = cache_cmd->add_subcommand("list", "List all cache.");
   cache_clean_cmd->callback([this]() {
     this->launch_config = []() {
       if (cache_config.clean_target == "") {
         // clean all cache by default
         cache_config.clean_target = "all";
       }
-      HperfCache::clean(cache_config.clean_target);
+      if (hperf::HperfCache::clean(cache_config.clean_target)) {
+        std::cout << "Success to clean cache " << cache_config.clean_target << ".\n";
+      } else {
+        std::cout << "Failed to clean cache " << cache_config.clean_target << ".\n";
+      }
     };
   });
   cache_list_cmd->callback([this]() {
     this->launch_config = []() {
-      auto cache_list = HperfCache::list();
-      for (const auto& cache : *cache_list) {
-        std::cout << cache << " ";
+      auto cache_list = hperf::HperfCache::list();
+      if (cache_list.empty()) {
+        std::cout << "There is no cache." << std::endl;
+      } else {
+        for (const auto& cache : cache_list) {
+          std::cout << cache << std::endl;
+        }
       }
-      std::cout << std::endl;
     };
   });
 

@@ -2,7 +2,7 @@
 #define HPERF_CACHE_HPP
 
 #include <filesystem>
-#include <memory>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -21,23 +21,15 @@ class HperfCache {
     return path;
   }
 
-  inline static bool create_cache_dir() {
-    if (!fs::exists(CACHE_DIR())) {
-      try {
-        fs::create_directories(CACHE_DIR());
-      } catch (const fs::filesystem_error& e) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   inline static bool clean(const std::string& target) {
     try {
       if (target == "all") {
-        fs::remove_all(CACHE_DIR());
+        for (const auto& entry : fs::directory_iterator(CACHE_DIR())) {
+          remove_target(entry);
+        }
       } else {
-        fs::remove(CACHE_DIR() / target);
+        fs::path to_remove = fs::path(target);
+        remove_target(CACHE_DIR() / to_remove);
       }
       return true;
     } catch (const fs::filesystem_error& e) {
@@ -45,22 +37,60 @@ class HperfCache {
     }
   }
 
-  inline static std::unique_ptr<std::vector<std::string>> list() {
-    auto res = std::make_unique<std::vector<std::string>>();
+  inline static std::vector<std::string> list() {
+    std::vector<std::string> res;
     if (fs::exists(CACHE_DIR())) {
-      for (const auto& entry : fs::directory_iterator(CACHE_DIR())) {
-        res->push_back(entry.path().filename().string());
-      }
+      traverse_dirs_name(CACHE_DIR(), fs::directory_entry(CACHE_DIR()), res);
     }
     return res;
   }
 
  private:
   inline static fs::path get_cache_dir() {
+    fs::path cache_dir;
     if (const char* home = std::getenv("HOME")) {
-      return fs::path(home) / ".cache" / "hperf";
+      cache_dir = fs::path(home) / ".cache" / "hperf";
+    } else {
+      cache_dir = fs::path("/tmp/hperf_cache");
     }
-    return fs::path("/tmp/hperf_cache");
+    if (!fs::exists(cache_dir)) {
+      try {
+        fs::create_directories(cache_dir);
+      } catch (const fs::filesystem_error& e) {
+        std::cerr << "Failed to create cache directory: \"" << cache_dir << "\"\n";
+      }
+    }
+    return cache_dir;
+  }
+
+  inline static void remove_target(const fs::directory_entry& to_remove) {
+    if (to_remove.is_directory()) {
+      fs::remove_all(to_remove.path());
+    } else {
+      fs::remove(to_remove.path());
+    }
+  }
+
+  inline static void remove_target(const fs::path& to_remove) {
+    if (fs::is_directory(to_remove)) {
+      fs::remove_all(to_remove);
+    } else {
+      fs::remove(to_remove);
+    }
+  }
+
+  inline static void traverse_dirs_name(const fs::path& base_dir, const fs::directory_entry& current_dir, std::vector<std::string>& res) {
+    try {
+      for (const auto& entry : fs::directory_iterator(current_dir)) {
+        if (entry.is_directory()) {
+          traverse_dirs_name(base_dir, entry, res);
+        } else {
+          res.push_back(fs::relative(entry.path(), base_dir));
+        }
+      }
+    } catch (const fs::filesystem_error& e) {
+      std::cerr << "Failed to access " << current_dir.path().string() << std::endl;
+    }
   }
 };
 

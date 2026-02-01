@@ -175,10 +175,6 @@ int hperf::CounterDetector::perf_event_open(struct perf_event_attr* pe,
 }
 
 void hperf::CounterDetector::save_detected_result() const {
-  if (!HperfCache::create_cache_dir()) {
-    std::cerr << "Failed to create cache directory: \"" << HperfCache::CACHE_DIR() << "\"\n";
-    return;
-  }
   std::ofstream outfile(HperfCache::COUNTER_CACHE());
   if (!outfile.is_open()) {
     std::cerr << "Failed to create counter cache: \"" << HperfCache::COUNTER_CACHE() << "\"\n";
