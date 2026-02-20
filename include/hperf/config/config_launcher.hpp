@@ -1,3 +1,14 @@
+/*
+ * Copyright (c) 2026 [Your Company/Name]
+ *
+ * This file contains third-party software:
+ *
+ * CLI11 - Command line parser for C++11
+ * Copyright (c) 2017-2026 University of Cincinnati
+ * SPDX-License-Identifier: BSD-3-Clause
+ * Source: https://github.com/CLIUtils/CLI11
+ */
+
 #ifndef HPERF_CONFIG_HPP
 #define HPERF_CONFIG_HPP
 

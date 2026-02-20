@@ -4,6 +4,26 @@ project(hperf VERSION 0.1.0 LANGUAGES CXX)
 # compile setup >>>
 # To generate compile_commands.json for clangd code hinting
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(compile_commands_file ${CMAKE_BINARY_DIR}/compile_commands.json)
+set(compile_commands_link  ${CMAKE_SOURCE_DIR}/compile_commands.json)
+
+# create symbol link to compile_commands.json
+# if symbol link doesn't exist, create it.
+# if symbol link exists but with unexpected target, override it.
+# otherwise, do nothing
+if(EXISTS ${compile_commands_link})
+	if(IS_SYMLINK ${compile_commands_link})
+		file(READ_SYMLINK ${compile_commands_link} current_target)
+		if(NOT current_target STREQUAL target)
+			file(REMOVE ${compile_commands_link})
+			file(CREATE_LINK ${compile_commands_file} ${compile_commands_link} SYMBOLIC)
+		endif()
+	else()
+		message(STATUS "${compile_commands_link} exists and not a symbol link.")
+	endif()
+else()
+	file(CREATE_LINK ${compile_commands_file} ${compile_commands_link} SYMBOLIC)
+endif()
 
 # arm64
 # set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
@@ -14,13 +34,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # <<< compile setup
 
 # hperf lib >>>
-file(GLOB_RECURSE HPERF_LIB_SOURCES 
-    "${CMAKE_SOURCE_DIR}/src/hperf/*/*.cpp"
+set(LIB_NAME lib${PROJECT_NAME})
+
+file(GLOB_RECURSE HPERF_LIB_SOURCES CONFIGURE_DEPENDS 
+    "${CMAKE_SOURCE_DIR}/src/hperf/*.cpp"
 )
+add_library(${LIB_NAME} STATIC ${HPERF_LIB_SOURCES})
+set_target_properties(${LIB_NAME} PROPERTIES OUTPUT_NAME hperf)
 
-add_library(lib${PROJECT_NAME} STATIC ${HPERF_LIB_SOURCES})
-
-target_include_directories(lib${PROJECT_NAME} PUBLIC
+target_include_directories(${LIB_NAME} PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third/CLI11/include>"
 		"$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
 )
@@ -28,8 +50,10 @@ target_include_directories(lib${PROJECT_NAME} PUBLIC
 
 # hperf exe >>>
 add_executable(${PROJECT_NAME} "${CMAKE_SOURCE_DIR}/src/hperf/main.cpp")
-target_link_libraries(${PROJECT_NAME} PRIVATE lib${PROJECT_NAME})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${LIB_NAME})
 # <<< hperf exe
+
+add_subdirectory(tmp_test)
 
 # # Users can specify the target CPU type by command-line option, e.g., -DCPU_TYPE=N1
 # # Available CPU type:
