@@ -11,16 +11,18 @@
 
 #include "hperf/args_parser.h"
 
-#include <unistd.h>    // For sysconf
 #include <getopt.h>
+#include <unistd.h>  // For sysconf
 
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 
 #include "hperf/pmu_config.h"
+#include "hperf/profile_config.h"
 
-bool ArgsParser::parse(ProfileConfig &profile_config, int argc, char **argv) {
-  const char *short_opts = "d:i:ac:p:o:h";
+bool ArgsParser::parse(ProfileConfig& profile_config, int argc, char** argv) {
+  const char* short_opts = "d:i:ac:p:o:h";
   const option long_opts[] = {{"duration", required_argument, nullptr, 'd'},
                               {"interval", required_argument, nullptr, 'i'},
                               {"system_wide", no_argument, nullptr, 'a'},
@@ -29,6 +31,8 @@ bool ArgsParser::parse(ProfileConfig &profile_config, int argc, char **argv) {
                               {"output", required_argument, nullptr, 'o'},
                               {"detect-counters", no_argument, nullptr, 1},
                               {"optimize-event-groups", no_argument, nullptr, 2},
+                              {"monitor", required_argument, nullptr, 3},
+                              {"cmn-mc-pos", required_argument, nullptr, 4},
                               {"help", no_argument, nullptr, 'h'},
                               {nullptr, 0, nullptr, 0}};
 
@@ -69,6 +73,18 @@ bool ArgsParser::parse(ProfileConfig &profile_config, int argc, char **argv) {
       case 2:
         profile_config.optimize_event_groups = true;
         break;
+      case 3:
+        if (strcmp(optarg, "arm_cmn_mem_bw_all") == 0) {
+          profile_config.monitor_target = ARM_CMN_MEM_BW_ALL;
+        } else if (strcmp(optarg, "arm_cmn_mem_bw_up") == 0) {
+          profile_config.monitor_target = ARM_CMN_MEM_BW_UP;
+        } else if (strcmp(optarg, "arm_cmn_mem_bw_down") == 0) {
+          profile_config.monitor_target = ARM_CMN_MEM_BW_DOWN;
+        }
+        break;
+      case 4:
+        profile_config.mc_position_file = optarg;
+        break;
       case 'h':
         print_help(argv[0]);
         exit(0);
@@ -108,7 +124,7 @@ bool ArgsParser::parse(ProfileConfig &profile_config, int argc, char **argv) {
     return false;
   }
 
-  if (flags == 0) {
+  if (flags == 0 && profile_config.monitor_target == NO_MONITOR_TARGET) {
     std::cerr << "Error: You must specify either -a (system-wide), -p <PID> (per-process), "
               << "or provide a command to execute.\n";
     return false;
@@ -134,10 +150,18 @@ bool ArgsParser::parse(ProfileConfig &profile_config, int argc, char **argv) {
     }
   }
 
+  if ((profile_config.monitor_target == ARM_CMN_MEM_BW_ALL ||
+       profile_config.monitor_target == ARM_CMN_MEM_BW_UP ||
+       profile_config.monitor_target == ARM_CMN_MEM_BW_DOWN) &&
+      profile_config.mc_position_file.empty()) {
+    std::cerr << "Error: You must provide a file to specify the memory controllers positions when monitoring memory bandwidth.\n";
+    return false;
+  }
+
   return true;
 }
 
-void ArgsParser::print_profile_config(const ProfileConfig &profile_config) {
+void ArgsParser::print_profile_config(const ProfileConfig& profile_config) {
   std::cout << "========= Profiling Configuration ==========\n";
 
   if (profile_config.test_duration > 0) {
@@ -207,7 +231,7 @@ std::vector<int> ArgsParser::parse_comma_sperated_list(std::string cpu_id_str) {
 
     size_t dash_pos = token.find('-');
     if (dash_pos == std::string::npos) {  // a single CPU ID
-      char *endptr = nullptr;
+      char* endptr = nullptr;
       int cpu = std::strtol(token.c_str(), &endptr, 10);
       if (*endptr != '\0' || cpu < 0) {
         return std::vector<int>();
@@ -216,8 +240,8 @@ std::vector<int> ArgsParser::parse_comma_sperated_list(std::string cpu_id_str) {
     } else {  // a CPU ID range
       std::string start_str = token.substr(0, dash_pos);
       std::string end_str = token.substr(dash_pos + 1);
-      char *endptr1 = nullptr;
-      char *endptr2 = nullptr;
+      char* endptr1 = nullptr;
+      char* endptr2 = nullptr;
       int start = std::strtol(start_str.c_str(), &endptr1, 10);
       int end = std::strtol(end_str.c_str(), &endptr2, 10);
       if (*endptr1 != '\0' || *endptr2 != '\0' || start < 0 || end < 0 || end < start) {
@@ -233,7 +257,7 @@ std::vector<int> ArgsParser::parse_comma_sperated_list(std::string cpu_id_str) {
   return result;
 }
 
-void ArgsParser::print_help(const char *program_name) {
+void ArgsParser::print_help(const char* program_name) {
   std::cout
       << "Usage: " << program_name << " [options] [command [command-args]]\n"
       << "         Efficiently collect PMU data by multiplexing hardware counters.\n"

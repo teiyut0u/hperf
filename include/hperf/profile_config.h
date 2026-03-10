@@ -8,9 +8,16 @@ enum ProfileMode { SYSTEM_WIDE,
                    TRACK_PID,
                    SUBPROCESS };
 
+enum MonitorTarget {
+  NONE,
+  ARM_CMN_MEM_UP,
+  ARM_CMN_MEM_DOWN,
+  ARM_CMN_MEM_ALL,
+};
+
 /**
  * @brief The struct to store the profiling options parsed from the command line
- * 
+ *
  */
 struct ProfileConfig {
   ProfileMode mode = SYSTEM_WIDE;
@@ -21,11 +28,15 @@ struct ProfileConfig {
   pid_t target_pid = -1;             // 'p': target PID
   std::string output_filename = "";  // 'o': output file name
 
-  std::ofstream *output_file_ptr = nullptr;  // file stream for the output file
+  std::ofstream* output_file_ptr = nullptr;  // file stream for the output file
 
-  std::vector<char *> command_args;  // command
+  std::vector<char*> command_args;  // command
 
   bool detect_counters = false;  // 'detect-counters': detect the number of programmable counters
 
   bool optimize_event_groups = false;  // 'optimize-event-groups': detect the number of programmable counters, and use the result to optimize the default event groups
+
+  // monitor
+  MonitorTarget monitor_target = NONE;  // the target to monitor
+  std::string mc_position_file = "";    // the memory controller position on the NoC
 };
