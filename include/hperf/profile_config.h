@@ -9,10 +9,10 @@ enum ProfileMode { SYSTEM_WIDE,
                    SUBPROCESS };
 
 enum MonitorTarget {
-  NONE,
-  ARM_CMN_MEM_UP,
-  ARM_CMN_MEM_DOWN,
-  ARM_CMN_MEM_ALL,
+  NO_MONITOR_TARGET,
+  ARM_CMN_MEM_BW_UP,
+  ARM_CMN_MEM_BW_DOWN,
+  ARM_CMN_MEM_BW_ALL,
 };
 
 /**
@@ -37,6 +37,6 @@ struct ProfileConfig {
   bool optimize_event_groups = false;  // 'optimize-event-groups': detect the number of programmable counters, and use the result to optimize the default event groups
 
   // monitor
-  MonitorTarget monitor_target = NONE;  // the target to monitor
-  std::string mc_position_file = "";    // the memory controller position on the NoC
+  MonitorTarget monitor_target = NO_MONITOR_TARGET;  // the target to monitor
+  std::string mc_position_file = "";                 // the memory controller position on the NoC
 };
