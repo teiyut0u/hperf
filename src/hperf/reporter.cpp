@@ -61,13 +61,13 @@ void Reporter::estimation() {
 
   for (int j = 0; j < fixed_event_num_; j++) {
     uint64_t fixed_event_total = 0;
-    for (int i = 0; i < event_group_num; i++) {
+    for (size_t i = 0; i < event_group_num; i++) {
       fixed_event_total += stat_[i][j].total_value;
     }
     stat_[0][j].estimated_value = fixed_event_total;
   }
 
-  for (int i = 0; i < event_group_num; i++) {
+  for (size_t i = 0; i < event_group_num; i++) {
     for (int j = 0; j < pmu_config_.get_event_group_by_idx(i).size(); j++) {
       double ratio = (double)total_time_in_ns_ / enabled_time_in_ns_[i];
       stat_[i][fixed_event_num_ + j].estimated_value = (uint64_t)(stat_[i][fixed_event_num_ + j].total_value * ratio);
@@ -132,7 +132,7 @@ EventStats Reporter::get_event_stat_by_name(std::string name, size_t group_id) {
 
   const auto& fixed_events = pmu_config_.get_fixed_events();
   const auto& schedulable_events = pmu_config_.get_event_group_by_idx(group_id);
-  
+
   for (size_t event_id = 0; event_id < fixed_events.size(); ++event_id) {
     if (fixed_events[event_id].name == name) {
       return stat_[group_id][event_id];

@@ -20,7 +20,7 @@ string(TOUPPER "${CPU_TYPE}" CPU_TYPE_UPPER)
 # Target: executable file hperf
 # ==========================================
 # Search for source files
-file(GLOB_RECURSE HPERF_SOURCES 
+file(GLOB_RECURSE HPERF_SOURCES CONFIGURE_DEPENDS 
     "${CMAKE_SOURCE_DIR}/src/hperf/*.cpp"
 )
 

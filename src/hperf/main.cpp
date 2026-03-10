@@ -47,7 +47,7 @@ uint64_t get_timestamp_since_epoch(std::chrono::steady_clock::time_point t) {
  * @param config
  * @param reporter
  */
-void system_wide_measurement(PMUConfig &pmu_config, const ProfileConfig &config, Reporter &reporter) {
+void system_wide_measurement(PMUConfig& pmu_config, const ProfileConfig& config, Reporter& reporter) {
   // create and initialize event groups on each CPU
   std::vector<EventScheduler> event_scheduler_list;
   for (const auto cpu : config.cpu_id_list) {
@@ -61,7 +61,7 @@ void system_wide_measurement(PMUConfig &pmu_config, const ProfileConfig &config,
   }
 
   // Reset all counters
-  for (int i = 0; i < config.cpu_id_list.size(); i++) {
+  for (size_t i = 0; i < config.cpu_id_list.size(); i++) {
     if (!event_scheduler_list[i].reset_all_groups()) {
       std::cerr << "Fail to reset counters on CPU " << config.cpu_id_list[i] << "\n";
       return;  // stop measurement
@@ -74,7 +74,7 @@ void system_wide_measurement(PMUConfig &pmu_config, const ProfileConfig &config,
   uint64_t start_timestamp = get_timestamp_since_epoch(start);
 
   // Enable (the first) event group
-  for (int i = 0; i < config.cpu_id_list.size(); i++) {
+  for (size_t i = 0; i < config.cpu_id_list.size(); i++) {
     if (!event_scheduler_list[i].enable_active_group()) {
       std::cerr << "Fail to reset counters on CPU " << config.cpu_id_list[i] << "\n";
       return;  // stop measurement
@@ -87,9 +87,9 @@ void system_wide_measurement(PMUConfig &pmu_config, const ProfileConfig &config,
     std::this_thread::sleep_for(std::chrono::milliseconds(config.switch_group_interval));
 
     uint64_t current_timestamp = get_timestamp_since_epoch(std::chrono::steady_clock::now());
-    for (int i = 0; i < config.cpu_id_list.size(); i++) {
+    for (size_t i = 0; i < config.cpu_id_list.size(); i++) {
       if (event_scheduler_list[i].read_active_group_data() > 0) {
-        const auto &buffer = event_scheduler_list[i].get_active_group_read_buffer();
+        const auto& buffer = event_scheduler_list[i].get_active_group_read_buffer();
         for (uint64_t j = 0; j < buffer.nr(); ++j) {
           Record record = {
               current_timestamp - start_timestamp,
@@ -107,7 +107,7 @@ void system_wide_measurement(PMUConfig &pmu_config, const ProfileConfig &config,
     }
 
     // Switch to the next event group
-    for (int i = 0; i < config.cpu_id_list.size(); i++) {
+    for (size_t i = 0; i < config.cpu_id_list.size(); i++) {
       if (!event_scheduler_list[i].switch_to_next_group())
         std::cerr << "Warning: Failed to properly switch event group on CPU " << config.cpu_id_list[i]
                   << std::endl;
@@ -115,7 +115,7 @@ void system_wide_measurement(PMUConfig &pmu_config, const ProfileConfig &config,
   }  // end while
 
   // Stop the last active group
-  for (int i = 0; i < config.cpu_id_list.size(); i++) {
+  for (size_t i = 0; i < config.cpu_id_list.size(); i++) {
     if (!event_scheduler_list[i].disable_active_group()) {
       std::cerr << "Fail to stop counters on CPU " << config.cpu_id_list[i] << "\n";
     }
@@ -124,7 +124,7 @@ void system_wide_measurement(PMUConfig &pmu_config, const ProfileConfig &config,
   std::cout << "System-wide: data collection finished" << std::endl;
 }
 
-void per_process_measurement(PMUConfig &pmu_config, const ProfileConfig &config, Reporter &reporter) {
+void per_process_measurement(PMUConfig& pmu_config, const ProfileConfig& config, Reporter& reporter) {
   EventScheduler event_scheduler(pmu_config, config.target_pid, -1);
   if (!event_scheduler.initialize()) {
     std::cerr << "Fail to initialize event groups for PID " << config.target_pid << "\n";
@@ -178,7 +178,7 @@ void per_process_measurement(PMUConfig &pmu_config, const ProfileConfig &config,
     int active_group_idx = event_scheduler.get_active_group_idx();
 
     if (event_scheduler.read_active_group_data() > 0) {
-      const auto &buffer = event_scheduler.get_active_group_read_buffer();
+      const auto& buffer = event_scheduler.get_active_group_read_buffer();
       for (uint64_t i = 0; i < buffer.nr(); ++i) {
         Record record = {
             current_timestamp - start_timestamp,
@@ -216,7 +216,7 @@ void per_process_measurement(PMUConfig &pmu_config, const ProfileConfig &config,
  * @param command_args Array of command arguments (null-terminated)
  * @return pid_t PID of the child process, or -1 on error
  */
-pid_t execute_command(char *const command_args[]) {
+pid_t execute_command(char* const command_args[]) {
   pid_t child_pid = fork();
 
   if (child_pid == 0) {
@@ -236,7 +236,7 @@ pid_t execute_command(char *const command_args[]) {
   }
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   PMUConfig pmu_config;
   if (!pmu_config.is_valid()) {
     std::cerr << "Error: PMU event configuration is invalid." << std::endl;
