@@ -82,16 +82,18 @@ void monitor(const ProfileConfig& profile_config) {
     std::cerr << "Failed to start monitoring because " << start_err.message() << std::endl;
     exit(1);
   }
-  // set duration
+  // make sure ellapse some time
+  std::this_thread::sleep_for(std::chrono::milliseconds(profile_config.switch_group_interval));
+  // set duration & inicialize next_time
   std::chrono::steady_clock::time_point end_time, next_time;
   if (profile_config.test_duration == -1) {
     end_time = std::chrono::steady_clock::time_point::max();
   } else {
-    end_time = std::chrono::steady_clock::now() + std::chrono::seconds(profile_config.test_duration);
+    // overhead always exists, which makes last monitor often exceeds end time
+    // so +1 can handle this problem
+    end_time = std::chrono::steady_clock::now() + std::chrono::seconds(profile_config.test_duration + 1);
   }
-  // make sure ellapse some time
-  std::this_thread::sleep_for(std::chrono::milliseconds(profile_config.switch_group_interval));
-  next_time = std::chrono::steady_clock::now();
+  next_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(profile_config.switch_group_interval);
   // monitor loop
   setup_signal_int_handler();
   while (next_time < end_time && monitor_enabled.load(std::memory_order_acquire)) {
@@ -121,8 +123,8 @@ void monitor(const ProfileConfig& profile_config) {
     }
     output << std::endl;
     // sleep interval
-    next_time += std::chrono::milliseconds(profile_config.switch_group_interval);
     std::this_thread::sleep_until(next_time);
+    next_time += std::chrono::milliseconds(profile_config.switch_group_interval);
   }
   // stop and exit
   auto stop_err = bw_monitor.stop();

@@ -1,10 +1,12 @@
 #ifndef HPERF_UTIL_HPP
 #define HPERF_UTIL_HPP
 
+#include <linux/perf_event.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
 #include <charconv>
+#include <cstdio>
 #include <filesystem>
 #include <string>
 #include <system_error>
@@ -13,6 +15,10 @@ namespace fs = std::filesystem;
 
 class MonitorUtil {
  public:
+  inline static void debug_perf_event_attr(struct perf_event_attr& attr) {
+    printf("type:%u\nconfig: 0x%016llx\nconfig1:0x%016llx\nconfig2:0x%016llx\n", attr.type, attr.config, attr.config1, attr.config2);
+  }
+
   static const fs::path DEVICES_DIR;
 
   static std::error_code read_file(std::string& result, const fs::path& file_path, unsigned int retry_times = 0);

@@ -26,7 +26,9 @@
 #include "hperf/args_parser.h"
 #include "hperf/counter_detector.h"
 #include "hperf/event_scheduler.h"
+#include "hperf/monitor/monitor.hpp"
 #include "hperf/pmu_config.h"
+#include "hperf/profile_config.h"
 #include "hperf/reporter.h"
 
 #define MAX_TEST_DURATION 600  // Max test duration: 600s
@@ -249,6 +251,10 @@ int main(int argc, char** argv) {
   // Step 1 Parse the command-line options into profiling config
   if (!args_parser.parse(profile_config, argc, argv)) {
     return 1;
+  }
+
+  if (profile_config.monitor_target != NO_MONITOR_TARGET) {
+    monitor(profile_config);
   }
 
   // Detect counters?

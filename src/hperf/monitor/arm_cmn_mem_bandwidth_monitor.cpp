@@ -5,16 +5,19 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
 
+#include "hperf/monitor/monitor_util.hpp"
 #include "hperf/monitor/perf_event_attr.hpp"
 #include "hperf/profile_config.h"
 
 std::error_code ArmCmnMemBWMonitor::add_ports(const fs::path& device_path, const std::vector<uint16_t>& nodeid_encode_vec) {
+  // printf("device_path '%s'\n", device_path.string().c_str());
   std::vector<std::string_view> events;
   // reserve space & add events
   if (monitor_targrt == ARM_CMN_MEM_BW_UP || monitor_targrt == ARM_CMN_MEM_BW_ALL) {
@@ -31,7 +34,9 @@ std::error_code ArmCmnMemBWMonitor::add_ports(const fs::path& device_path, const
       // make attr
       PerfEventAttr attr;
       auto err = add_attr_field(device_path, nodeid_encode, event, attr);
+      // MonitorUtil::debug_perf_event_attr(*attr.get());
       if (err) {
+        // printf("Failed to add_attr_field\n");
         return err;
       }
       // open event
@@ -39,6 +44,7 @@ std::error_code ArmCmnMemBWMonitor::add_ports(const fs::path& device_path, const
       vec.emplace_back();
       auto event_err = vec.back().first.open_event(attr.get(), -1, 0, 0);
       if (event_err) {
+        // printf("Failed to open event\n");
         return event_err;
       }
     }
@@ -135,11 +141,12 @@ std::error_code ArmCmnMemBWMonitor::get_bandwidth_helper(uint64_t& bandwidth, st
   } else {
     bandwidth = static_cast<uint64_t>(
         std::round(
-            static_cast<long double>(delta_total_time_running) /
-            delta_total_time_enabled) *
-        delta_total_value);
+            static_cast<long double>(delta_total_time_enabled) /
+            delta_total_time_running *
+            delta_total_value));
   };
   bandwidth <<= 5;  // 32 bytes per flit
+  // printf("enabled '%lu',running '%lu',value '%lu',bandwidth '%lu'\n", delta_total_time_enabled, delta_total_time_running, delta_total_value, bandwidth);
   return std::error_code{};
 }
 
@@ -149,11 +156,13 @@ std::error_code ArmCmnMemBWMonitor::add_attr_field(const fs::path device_path, u
   // add type
   auto type_err = attr.add_type(device_path / "type");
   if (type_err) {
+    // printf("Failed to add_type\n");
     return type_err;
   }
   // add event
   auto event_err = attr.add_event(device_path / "events" / event_name);
   if (event_err) {
+    // printf("Failed to add_event\n");
     return event_err;
   }
   // add param
@@ -169,8 +178,9 @@ std::error_code ArmCmnMemBWMonitor::add_attr_field(const fs::path device_path, u
   for (const auto& param : params) {
     auto field_err = attr.add_field(format_path / param.first, param.second);
     if (field_err) {
+      // printf("Failed to add_field\n");
       return field_err;
     }
   }
-  return {};
+  return std::error_code{};
 }

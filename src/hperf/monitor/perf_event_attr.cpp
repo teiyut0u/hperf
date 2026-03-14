@@ -1,8 +1,10 @@
 #include "hperf/monitor/perf_event_attr.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <iostream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -28,6 +30,7 @@ std::error_code PerfEventAttr::add_type(const fs::path& type_path) {
 }
 
 std::error_code PerfEventAttr::add_event(const fs::path& event_path) {
+  // printf("event_path '%s'\n", event_path.string().c_str());
   auto device_name_it = std::find(event_path.begin(), event_path.end(), "devices");
   if (device_name_it == event_path.end() || ++device_name_it == event_path.end()) {
     return std::make_error_code(std::errc::invalid_argument);
@@ -40,6 +43,9 @@ std::error_code PerfEventAttr::add_event(const fs::path& event_path) {
   }
   auto params = parse_param_views(event_field_result);
   for (const auto& pair : params) {
+    if (pair.second.size() > 0 && pair.second[0] == '?') {
+      continue;
+    }
     std::string field_name{pair.first};
     uint64_t field_val;
     auto parse_errc = MonitorUtil::string2integer(pair.second, field_val);
@@ -116,9 +122,9 @@ std::error_code PerfEventAttr::add_field(const fs::path& field_path, uint64_t fi
     // A field may be seperated into several part, add one part each time
     uint8_t bits_length = end_bit - start_bit + 1;
     *config_ptr |=
-        ((field_val >> accumulated_offset)  // remove the bits that have been added to config
-         & ((1u << bits_length) - 1))       // mask, get the needed bits
-        << start_bit;                       // move the bits to the correct position
+        ((field_val >> accumulated_offset)                   // remove the bits that have been added to config
+         & (UINT64_MAX >> std::max(0, (64 - bits_length))))  // mask, get the needed bits
+        << start_bit;                                        // move the bits to the correct position
     accumulated_offset += bits_length;
     start_parse_position = next_comma_sign_position + 1;
   }
