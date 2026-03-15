@@ -43,14 +43,11 @@ std::error_code PerfEventAttr::add_event(const fs::path& event_path) {
   }
   auto params = parse_param_views(event_field_result);
   for (const auto& pair : params) {
-    if (pair.second.size() > 0 && pair.second[0] == '?') {
-      continue;
-    }
     std::string field_name{pair.first};
     uint64_t field_val;
     auto parse_errc = MonitorUtil::string2integer(pair.second, field_val);
     if (parse_errc != std::errc()) {
-      return std::make_error_code(parse_errc);
+      continue;
     }
     auto field_path = MonitorUtil::DEVICES_DIR / (*device_name_it) / "format" / pair.first;
     auto add_field_error_code = add_field(field_path, field_val);

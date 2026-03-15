@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -47,12 +48,18 @@ void monitor(const ProfileConfig& profile_config) {
   std::vector<std::pair<std::filesystem::path, std::vector<uint16_t>>> mc_positions;
   std::string device_name;
   size_t mc_count_on_device;
+  std::string nodeid_input_buffer;
   while (mc_pos_file >> device_name >> mc_count_on_device) {
     mc_positions.emplace_back(MonitorUtil::DEVICES_DIR / device_name, std::vector<uint16_t>{});
-    uint16_t tmp_nodeid_encode;
+    uint16_t nodeid_encode;
     for (size_t i = 0; i < mc_count_on_device; ++i) {
-      mc_pos_file >> tmp_nodeid_encode;
-      mc_positions.back().second.push_back(tmp_nodeid_encode);
+      mc_pos_file >> nodeid_input_buffer;
+      auto errc = MonitorUtil::string2integer(nodeid_input_buffer, nodeid_encode);
+      if (errc != std::errc()) {
+        std::cerr << "Memory controller position file is corrupted.\n";
+        exit(1);
+      }
+      mc_positions.back().second.push_back(nodeid_encode);
     }
   }
   // set output
