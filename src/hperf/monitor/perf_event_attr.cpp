@@ -16,7 +16,7 @@ PerfEventAttr::PerfEventAttr() {
   attr.size = sizeof(attr);
 }
 
-std::error_code PerfEventAttr::add_type(const fs::path& type_path) {
+std::error_code PerfEventAttr::set_type(const fs::path& type_path) {
   std::string type_result;
   auto read_err = MonitorUtil::read_file(type_result, type_path);
   if (read_err) {
@@ -163,11 +163,11 @@ void PerfEventAttr::parse_param_views_helper(
   }
 }
 
-std::error_code PerfEventAttr::parse_param(const std::string& event_str) {
+std::error_code PerfEventAttr::parse_param(std::string_view event_str) {
   // add type
   auto param_left_border = event_str.find('/');
   fs::path device_path = MonitorUtil::DEVICES_DIR / std::string_view{event_str.data(), param_left_border};
-  auto add_type_error = add_type(device_path / "type");
+  auto add_type_error = set_type(device_path / "type");
   if (add_type_error) {
     return add_type_error;
   }
@@ -195,7 +195,7 @@ std::error_code PerfEventAttr::parse_param(const std::string& event_str) {
   return {};
 }
 
-std::error_code PerfEventAttr::parse_event_from(const std::string& event_str) {
+std::error_code PerfEventAttr::parse_attr_from(std::string_view event_str) {
   // check whether the event string is right format
   // only device/param1=...,param2,.../ is avaliable now
   // maybe will be compatible to perf later

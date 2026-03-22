@@ -154,7 +154,7 @@ std::error_code ArmCmnMemBWMonitor::add_attr_field(const fs::path device_path, u
   attr.set_disabled();
   attr.set_read_format(PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING);
   // add type
-  auto type_err = attr.add_type(device_path / "type");
+  auto type_err = attr.set_type(device_path / "type");
   if (type_err) {
     // printf("Failed to add_type\n");
     return type_err;
