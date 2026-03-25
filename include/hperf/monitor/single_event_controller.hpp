@@ -37,6 +37,8 @@ class SingleEventController {
   std::optional<uint64_t> id() const;
   std::optional<uint64_t> lost() const;
 
+  uint64_t get_read_format() const { return read_format_; }
+
  private:
   uint64_t time_enabled_offset_;
   uint64_t time_running_offset_;
