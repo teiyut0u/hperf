@@ -2,6 +2,8 @@
 
 #include <sys/stat.h>
 
+#include <array>
+
 const fs::path MonitorUtil::DEVICES_DIR{"/sys/bus/event_source/devices"};
 
 std::error_code MonitorUtil::read_file(std::string& result, const fs::path& file_path, unsigned int retry_times) {
@@ -37,6 +39,41 @@ std::error_code MonitorUtil::read_file(std::string& result, const fs::path& file
   }
 }
 
+std::error_code MonitorUtil::add_watchpoint_monitor_attr(const fs::path device_path, uint16_t nodeid_encode, std::string_view event_name, PerfEventAttr& attr) {
+  attr.set_disabled();
+  attr.set_read_format(PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING);
+  // add type
+  auto type_err = attr.set_type(device_path / "type");
+  if (type_err) {
+    // printf("Failed to add_type\n");
+    return type_err;
+  }
+  // add event
+  auto event_err = attr.add_event(device_path / "events" / event_name);
+  if (event_err) {
+    // printf("Failed to add_event\n");
+    return event_err;
+  }
+  // add param
+  std::array<std::pair<std::string_view, uint64_t>, 6> params{{
+      {"bynodeid", 0x1},
+      {"nodeid", nodeid_encode & (uint64_t(-1) << 3)},
+      {"wp_dev_sel", (nodeid_encode & 0x4) >> 2},
+      {"wp_chn_sel", 0x3},
+      {"wp_val", 0x0},
+      {"wp_mask", 0xffffffffffffffff},
+  }};
+  fs::path format_path = device_path / "format";
+  for (const auto& param : params) {
+    auto field_err = attr.add_field(format_path / param.first, param.second);
+    if (field_err) {
+      // printf("Failed to add_field\n");
+      return field_err;
+    }
+  }
+  return std::error_code{};
+}
+
 bool MonitorUtil::retry_fread(FILE* stream, unsigned int retry_times, std::string& result) {
   char buffer[4096];
   for (unsigned int attempt = 0; attempt <= retry_times; ++attempt) {
@@ -56,4 +93,39 @@ bool MonitorUtil::retry_fread(FILE* stream, unsigned int retry_times, std::strin
     }
   }
   return false;
+}
+
+std::error_code add_watchpoint_monitor_attr(const fs::path device_path, uint16_t nodeid_encode, std::string_view event_name, PerfEventAttr& attr) {
+  attr.set_disabled();
+  attr.set_read_format(PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING);
+  // add type
+  auto type_err = attr.set_type(device_path / "type");
+  if (type_err) {
+    // printf("Failed to add_type\n");
+    return type_err;
+  }
+  // add event
+  auto event_err = attr.add_event(device_path / "events" / event_name);
+  if (event_err) {
+    // printf("Failed to add_event\n");
+    return event_err;
+  }
+  // add param
+  std::array<std::pair<std::string_view, uint64_t>, 6> params{{
+      {"bynodeid", 0x1},
+      {"nodeid", nodeid_encode & (uint64_t(-1) << 3)},
+      {"wp_dev_sel", (nodeid_encode & 0x4) >> 2},
+      {"wp_chn_sel", 0x3},
+      {"wp_val", 0x0},
+      {"wp_mask", 0xffffffffffffffff},
+  }};
+  fs::path format_path = device_path / "format";
+  for (const auto& param : params) {
+    auto field_err = attr.add_field(format_path / param.first, param.second);
+    if (field_err) {
+      // printf("Failed to add_field\n");
+      return field_err;
+    }
+  }
+  return std::error_code{};
 }

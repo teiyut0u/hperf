@@ -69,7 +69,7 @@ std::error_code BaseMonitor::start() {
   return {};
 }
 
-std::error_code BaseMonitor::stop() {
+std::error_code BaseMonitor::stop() const {
   for (const auto& monitor : single_event_monitor_vec_) {
     auto err = monitor.first.disable_event();
     if (err) {

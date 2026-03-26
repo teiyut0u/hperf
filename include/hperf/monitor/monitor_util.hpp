@@ -11,6 +11,8 @@
 #include <string>
 #include <system_error>
 
+#include "hperf/monitor/perf_event_attr.hpp"
+
 namespace fs = std::filesystem;
 
 class MonitorUtil {
@@ -26,6 +28,8 @@ class MonitorUtil {
   inline static int perf_event_open(struct perf_event_attr* attr, pid_t pid, int cpu, int group_fd, unsigned long flags) {
     return syscall(__NR_perf_event_open, attr, pid, cpu, group_fd, flags);
   }
+
+  static std::error_code add_watchpoint_monitor_attr(const fs::path device_path, uint16_t nodeid_encode, std::string_view event_name, PerfEventAttr& attr);
 
   template <typename T>
   static std::errc string2integer(std::string_view str_view, T& value) {

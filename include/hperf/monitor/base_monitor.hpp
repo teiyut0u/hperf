@@ -1,5 +1,5 @@
-#ifndef ARM_CMN_MEM_BANDWIDTH_MONITOR_HPP
-#define ARM_CMN_MEM_BANDWIDTH_MONITOR_HPP
+#ifndef BASE_MONITOR_HPP
+#define BASE_MONITOR_HPP
 
 #include <linux/perf_event.h>
 
@@ -23,7 +23,7 @@ class BaseMonitor {
   void clear();
 
   std::error_code start();
-  std::error_code stop();
+  std::error_code stop() const;
   std::error_code get_scaled_count(
       std::vector<uint64_t>& scaled_count);
 
