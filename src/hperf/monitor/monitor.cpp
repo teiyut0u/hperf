@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <numeric>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -17,7 +18,9 @@
 #include <vector>
 
 #include "hperf/monitor/arm_cmn_mem_bandwidth_monitor.hpp"
+#include "hperf/monitor/base_monitor.hpp"
 #include "hperf/monitor/monitor_util.hpp"
+#include "hperf/monitor/single_event_controller.hpp"
 #include "hperf/profile_config.h"
 
 std::atomic_bool monitor_enabled{true};
@@ -38,14 +41,13 @@ void setup_signal_int_handler() {
   }
 }
 
-void monitor(const ProfileConfig& profile_config) {
-  // read memory controller position
-  std::ifstream mc_pos_file(profile_config.mc_position_file);
+std::errc read_mc_pos_file(const std::string& mc_pos_file_path,
+                           std::vector<std::pair<std::filesystem::path, std::vector<uint16_t>>>& mc_positions) {
+  std::ifstream mc_pos_file(mc_pos_file_path);
   if (!mc_pos_file.is_open()) {
     std::cerr << "Failed to read memory controller position.\n";
     exit(1);
   }
-  std::vector<std::pair<std::filesystem::path, std::vector<uint16_t>>> mc_positions;
   std::string device_name;
   size_t mc_count_on_device;
   std::string nodeid_input_buffer;
@@ -56,43 +58,151 @@ void monitor(const ProfileConfig& profile_config) {
       mc_pos_file >> nodeid_input_buffer;
       auto errc = MonitorUtil::string2integer(nodeid_input_buffer, nodeid_encode);
       if (errc != std::errc()) {
-        std::cerr << "Memory controller position file is corrupted.\n";
-        exit(1);
+        return errc;
       }
       mc_positions.back().second.push_back(nodeid_encode);
     }
   }
-  // set output
-  std::ofstream output;
-  if (profile_config.output_filename.empty()) {
+  return std::errc();
+}
+
+std::error_code get_output(const std::string& output_path, std::ofstream& output) {
+  ;
+  if (output_path.empty()) {
     output.open("/dev/stdout");
   } else {
-    output.open(profile_config.output_filename);
+    output.open(output_path);
   }
   if (!output.is_open()) {
+    return std::make_error_code(std::errc::io_error);
+  }
+  return {};
+}
+
+std::error_code add_arm_cmn_mem_bw_monitor(
+    const MonitorTarget monitor_target,
+    const std::vector<std::pair<std::filesystem::path, std::vector<uint16_t>>>& mc_positions,
+    std::vector<BaseMonitor>& monitor_vec) {
+  // set events
+  std::vector<std::string_view> event_vec;
+  if (monitor_target == ARM_CMN_MEM_BW_UP ||
+      monitor_target == ARM_CMN_MEM_BW_ALL) {
+    event_vec.emplace_back("watchpoint_up");
+  } else {
+    event_vec.emplace_back();
+  }
+  if (monitor_target == ARM_CMN_MEM_BW_UP ||
+      monitor_target == ARM_CMN_MEM_BW_ALL) {
+    event_vec.emplace_back("watchpoint_down");
+  } else {
+    event_vec.emplace_back();
+  }
+
+  for (const auto& event : event_vec) {
+    if (event.empty()) {
+      monitor_vec.emplace_back();
+      continue;
+    }
+    std::vector<SingleEventController> single_event_controller_vec;
+    for (const auto& mc_pos : mc_positions) {
+      for (const auto& nodeid_encode : mc_pos.second) {
+        // make attr
+        PerfEventAttr attr;
+        auto attr_err = MonitorUtil::add_watchpoint_monitor_attr(
+            mc_pos.first, nodeid_encode, event, attr);
+        if (attr_err) {
+          return attr_err;
+        }
+        // open event
+        auto event_err =
+            single_event_controller_vec.emplace_back()
+                .open_event(attr.get(), -1, 0, 0);
+        if (event_err) {
+          return event_err;
+        }
+      }
+    }
+    // add monitor
+    auto add_monitor_errc =
+        monitor_vec.emplace_back()
+            .add_monitor(std::move(single_event_controller_vec));
+    if (add_monitor_errc != std::errc()) {
+      return std::make_error_code(add_monitor_errc);
+    }
+  }
+  return {};
+}
+
+void do_monitor(std::vector<BaseMonitor>& monitor_vec, const int interval, const std::chrono::steady_clock::time_point& end_time, std::ofstream& output) {
+  // setup
+  std::chrono::steady_clock::time_point next_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(interval);
+  // monitor loop
+  while (next_time < end_time && monitor_enabled.load(std::memory_order_acquire)) {
+    // output timestamp
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                  std::chrono::system_clock::now().time_since_epoch())
+                  .count();
+    output << (ms / 1000) << '.'
+           << std::setfill('0') << std::setw(3) << (ms % 1000);
+    // output monitor value
+    for (auto& monitor : monitor_vec) {
+      std::vector<uint64_t> scaled_count;
+      auto monitor_err = monitor.get_scaled_count(scaled_count);
+      if (monitor_err) {
+        std::cerr << "Failed to get monitor value because " << monitor_err.message() << std::endl;
+      }
+      output << ',';
+      if (scaled_count.empty()) {
+        output << "none";
+      } else {
+        output << std::accumulate(scaled_count.cbegin(), scaled_count.cend(), 0ULL);
+      }
+    }
+    output << std::endl;
+    // sleep interval
+    std::this_thread::sleep_until(next_time);
+    next_time += std::chrono::milliseconds(interval);
+  }
+}
+
+void monitor(const ProfileConfig& profile_config) {
+  // read memory controller position
+  std::vector<std::pair<std::filesystem::path, std::vector<uint16_t>>> mc_positions;
+  auto read_mc_pos_errc = read_mc_pos_file(profile_config.mc_position_file, mc_positions);
+  if (read_mc_pos_errc != std::errc()) {
+    std::cerr << "Memory controller position file is corrupted.\n";
+    exit(1);
+  }
+
+  // set output
+  std::ofstream output;
+  auto output_error = get_output(profile_config.output_filename, output);
+  if (output_error) {
     std::cerr << "Failed to open output file\n.";
     exit(1);
   }
 
-  // add ports to monitor
-  ArmCmnMemBWMonitor bw_monitor{profile_config.monitor_target};
-  for (const auto& mc_pos : mc_positions) {
-    auto err = bw_monitor.add_ports(mc_pos.first, mc_pos.second);
-    if (err) {
-      std::cerr << "Failed to add posrts because " << err.message() << std::endl;
+  // add monitor
+  std::vector<BaseMonitor> monitor_vec;
+  auto monitor_err = add_arm_cmn_mem_bw_monitor(profile_config.monitor_target, mc_positions, monitor_vec);
+  if (monitor_err) {
+    std::cerr << "Failed to add monitors because " << monitor_err.message() << std::endl;
+    exit(1);
+  }
+
+  // start monitor
+  for (auto& monitor : monitor_vec) {
+    auto start_err = monitor.start();
+    if (start_err) {
+      std::cerr << "Failed to start monitoring because " << start_err.message() << std::endl;
       exit(1);
     }
   }
-  // start monitor
-  auto start_err = bw_monitor.start();
-  if (start_err) {
-    std::cerr << "Failed to start monitoring because " << start_err.message() << std::endl;
-    exit(1);
-  }
+
   // make sure ellapse some time
   std::this_thread::sleep_for(std::chrono::milliseconds(profile_config.switch_group_interval));
   // set duration & inicialize next_time
-  std::chrono::steady_clock::time_point end_time, next_time;
+  std::chrono::steady_clock::time_point end_time;
   if (profile_config.test_duration == -1) {
     end_time = std::chrono::steady_clock::time_point::max();
   } else {
@@ -100,43 +210,16 @@ void monitor(const ProfileConfig& profile_config) {
     // so +1 can handle this problem
     end_time = std::chrono::steady_clock::now() + std::chrono::seconds(profile_config.test_duration + 1);
   }
-  next_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(profile_config.switch_group_interval);
-  // monitor loop
   setup_signal_int_handler();
-  while (next_time < end_time && monitor_enabled.load(std::memory_order_acquire)) {
-    uint64_t up_bandwidth, down_bandwidth;
-    auto err = bw_monitor.get_bandwidth(up_bandwidth, down_bandwidth);
-    if (err) {
-      std::cerr << "Failed to get bandwidth because " << err.message() << std::endl;
-    }
-    // output timestamp
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                  std::chrono::system_clock::now().time_since_epoch())
-                  .count();
-    output << (ms / 1000) << '.'
-           << std::setfill('0') << std::setw(3) << (ms % 1000) << ',';
-    // output bandwidth
-    MonitorTarget target = bw_monitor.monitor_target();
-    if (target == ARM_CMN_MEM_BW_UP || target == ARM_CMN_MEM_BW_ALL) {
-      output << up_bandwidth;
-    } else {
-      output << "Not monitored";
-    }
-    output << ',';
-    if (target == ARM_CMN_MEM_BW_DOWN || target == ARM_CMN_MEM_BW_ALL) {
-      output << down_bandwidth;
-    } else {
-      output << "Not monitored";
-    }
-    output << std::endl;
-    // sleep interval
-    std::this_thread::sleep_until(next_time);
-    next_time += std::chrono::milliseconds(profile_config.switch_group_interval);
-  }
+  // std::chrono::steady_clock::time_point next_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(profile_config.switch_group_interval);
+  // monitor the targrt
+  do_monitor(monitor_vec, profile_config.switch_group_interval, end_time, output);
   // stop and exit
-  auto stop_err = bw_monitor.stop();
-  if (stop_err) {
-    std::cerr << "Failed to stop monitor";
+  for (const auto& monitor : monitor_vec) {
+    auto stop_err = monitor.stop();
+    if (stop_err) {
+      std::cerr << "Failed to stop monitor";
+    }
   }
   output.close();
   exit(0);
