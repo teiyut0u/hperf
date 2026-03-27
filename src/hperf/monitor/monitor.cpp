@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <numeric>
 #include <string>
 #include <system_error>
@@ -17,10 +18,10 @@
 #include <utility>
 #include <vector>
 
-#include "hperf/monitor/arm_cmn_mem_bandwidth_monitor.hpp"
-#include "hperf/monitor/base_monitor.hpp"
+#include "hperf/monitor/event_controller/event_controller_interface.hpp"
+#include "hperf/monitor/event_controller/single_event_controller.hpp"
+#include "hperf/monitor/general_monitor.hpp"
 #include "hperf/monitor/monitor_util.hpp"
-#include "hperf/monitor/single_event_controller.hpp"
 #include "hperf/profile_config.h"
 
 std::atomic_bool monitor_enabled{true};
@@ -82,7 +83,7 @@ std::error_code get_output(const std::string& output_path, std::ofstream& output
 std::error_code add_arm_cmn_mem_bw_monitor(
     const MonitorTarget monitor_target,
     const std::vector<std::pair<std::filesystem::path, std::vector<uint16_t>>>& mc_positions,
-    std::vector<BaseMonitor>& monitor_vec) {
+    std::vector<GeneralMonitor>& monitor_vec) {
   // set events
   std::vector<std::string_view> event_vec;
   if (monitor_target == ARM_CMN_MEM_BW_UP ||
@@ -97,13 +98,13 @@ std::error_code add_arm_cmn_mem_bw_monitor(
   } else {
     event_vec.emplace_back();
   }
-
+  // construct monitor
   for (const auto& event : event_vec) {
     if (event.empty()) {
       monitor_vec.emplace_back();
       continue;
     }
-    std::vector<SingleEventController> single_event_controller_vec;
+    std::vector<std::unique_ptr<EventControllerInterface>> event_controller_ptr_vec;
     for (const auto& mc_pos : mc_positions) {
       for (const auto& nodeid_encode : mc_pos.second) {
         // make attr
@@ -114,18 +115,19 @@ std::error_code add_arm_cmn_mem_bw_monitor(
           return attr_err;
         }
         // open event
-        auto event_err =
-            single_event_controller_vec.emplace_back()
-                .open_event(attr.get(), -1, 0, 0);
+        auto controller_ptr = std::make_unique<SingleEventController>();
+        auto event_err = controller_ptr->open_event(attr.get(), -1, 0, 0);
         if (event_err) {
           return event_err;
         }
+        // add event
+        event_controller_ptr_vec.emplace_back(std::move(controller_ptr));
       }
     }
     // add monitor
     auto add_monitor_errc =
         monitor_vec.emplace_back()
-            .add_monitor(std::move(single_event_controller_vec));
+            .add_monitor(std::move(event_controller_ptr_vec));
     if (add_monitor_errc != std::errc()) {
       return std::make_error_code(add_monitor_errc);
     }
@@ -133,7 +135,7 @@ std::error_code add_arm_cmn_mem_bw_monitor(
   return {};
 }
 
-void do_monitor(std::vector<BaseMonitor>& monitor_vec, const int interval, const std::chrono::steady_clock::time_point& end_time, std::ofstream& output) {
+void do_monitor(std::vector<GeneralMonitor>& monitor_vec, const int interval, const std::chrono::steady_clock::time_point& end_time, std::ofstream& output) {
   // setup
   std::chrono::steady_clock::time_point next_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(interval);
   // monitor loop
@@ -183,7 +185,7 @@ void monitor(const ProfileConfig& profile_config) {
   }
 
   // add monitor
-  std::vector<BaseMonitor> monitor_vec;
+  std::vector<GeneralMonitor> monitor_vec;
   auto monitor_err = add_arm_cmn_mem_bw_monitor(profile_config.monitor_target, mc_positions, monitor_vec);
   if (monitor_err) {
     std::cerr << "Failed to add monitors because " << monitor_err.message() << std::endl;
@@ -211,7 +213,6 @@ void monitor(const ProfileConfig& profile_config) {
     end_time = std::chrono::steady_clock::now() + std::chrono::seconds(profile_config.test_duration + 1);
   }
   setup_signal_int_handler();
-  // std::chrono::steady_clock::time_point next_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(profile_config.switch_group_interval);
   // monitor the targrt
   do_monitor(monitor_vec, profile_config.switch_group_interval, end_time, output);
   // stop and exit

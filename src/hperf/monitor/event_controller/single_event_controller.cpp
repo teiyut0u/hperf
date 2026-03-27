@@ -1,4 +1,4 @@
-#include "hperf/monitor/single_event_controller.hpp"
+#include "hperf/monitor/event_controller/single_event_controller.hpp"
 
 #include <linux/perf_event.h>
 #include <unistd.h>
@@ -14,7 +14,7 @@ SingleEventController::SingleEventController() {
 }
 
 SingleEventController::~SingleEventController() {
-  if (this->close_event()) {
+  if (this->close()) {
     // TODO: log it
   }
 }
@@ -29,7 +29,7 @@ SingleEventController& SingleEventController::operator=(SingleEventController&& 
   this->id_offset_ = another.id_offset_;
   this->lost_offset_ = another.lost_offset_;
 
-  if (this->close_event()) {
+  if (this->close()) {
     // TODO: log it
   }
   this->fd_ = another.fd_;
@@ -43,7 +43,7 @@ std::error_code SingleEventController::open_event(perf_event_attr* attr_ptr, pid
   // open event
   // close the old then open the new
   // return -1 and set errno when failed
-  if (this->close_event()) {
+  if (this->close()) {
     // TODO: log it
   }
   uint64_t saved_read_format = attr_ptr->read_format;
@@ -81,7 +81,7 @@ std::error_code SingleEventController::open_event(perf_event_attr* attr_ptr, pid
   return std::error_code{};
 }
 
-std::error_code SingleEventController::read_event() {
+std::error_code SingleEventController::read() {
   if (::read(this->fd_, this->buffer_.data(), this->buffer_.size()) == -1) {
     return std::error_code{errno, std::generic_category()};
   } else {
@@ -89,25 +89,24 @@ std::error_code SingleEventController::read_event() {
   }
 }
 
-std::error_code SingleEventController::close_event() {
+std::error_code SingleEventController::close() {
   if (this->fd_ == -1) {
     return std::error_code{};
   }
   int old_fd = this->fd_;
   this->fd_ = -1;
-  if (close(old_fd) == -1) {
+  if (::close(old_fd) == -1) {
     return std::error_code{errno, std::generic_category()};
   } else {
     return std::error_code{};
   }
 }
 
-// size_t SingleEventController::size() const {
-//   return this->buffer_.size();
-// }
-
 uint64_t SingleEventController::value() const {
   return *reinterpret_cast<const uint64_t*>(this->buffer_.data());
+}
+std::vector<uint64_t> SingleEventController::all_value() const {
+  return {*reinterpret_cast<const uint64_t*>(this->buffer_.data())};
 }
 
 std::optional<uint64_t> SingleEventController::time_enabled() const {
@@ -134,9 +133,25 @@ std::optional<uint64_t> SingleEventController::id() const {
   }
 }
 
+std::optional<std::vector<uint64_t>> SingleEventController::all_id() const {
+  if (this->read_format_ & PERF_FORMAT_ID) {
+    return std::vector<uint64_t>{*reinterpret_cast<const uint64_t*>(this->buffer_.data() + this->id_offset_)};
+  } else {
+    return std::nullopt;
+  }
+}
+
 std::optional<uint64_t> SingleEventController::lost() const {
   if (this->read_format_ & PERF_FORMAT_LOST) {
     return *reinterpret_cast<const uint64_t*>(this->buffer_.data() + this->lost_offset_);
+  } else {
+    return std::nullopt;
+  }
+}
+
+std::optional<std::vector<uint64_t>> SingleEventController::all_lost() const {
+  if (this->read_format_ & PERF_FORMAT_LOST) {
+    return std::vector<uint64_t>{*reinterpret_cast<const uint64_t*>(this->buffer_.data() + this->lost_offset_)};
   } else {
     return std::nullopt;
   }

@@ -11,7 +11,9 @@
 #include <system_error>
 #include <vector>
 
-class SingleEventController {
+#include "hperf/monitor/event_controller/event_controller_interface.hpp"
+
+class SingleEventController : public EventControllerInterface {
  public:
   SingleEventController();
   ~SingleEventController();
@@ -22,22 +24,22 @@ class SingleEventController {
 
   std::error_code open_event(perf_event_attr* attr_ptr, pid_t pid, int cpu, unsigned long flags);
 
-  template <typename T>
-  std::error_code control_event(unsigned long request, T arg) const;
-  inline std::error_code enable_event() const { return this->control_event(PERF_EVENT_IOC_ENABLE, 0); }
-  inline std::error_code disable_event() const { return this->control_event(PERF_EVENT_IOC_DISABLE, 0); }
-  inline std::error_code reset_event() const { return this->control_event(PERF_EVENT_IOC_RESET, 0); }
-  std::error_code read_event();
-  std::error_code close_event();
+  std::error_code control(unsigned long request, void* arg) const override;
 
-  // size_t size() const;
+  std::error_code read() override;
+  std::error_code close() override;
+
+  size_t size() const override { return 1; }
   uint64_t value() const;
-  std::optional<uint64_t> time_enabled() const;
-  std::optional<uint64_t> time_running() const;
+  std::vector<uint64_t> all_value() const override;
+  std::optional<uint64_t> time_enabled() const override;
+  std::optional<uint64_t> time_running() const override;
   std::optional<uint64_t> id() const;
+  std::optional<std::vector<uint64_t>> all_id() const override;
   std::optional<uint64_t> lost() const;
+  std::optional<std::vector<uint64_t>> all_lost() const override;
 
-  uint64_t get_read_format() const { return read_format_; }
+  uint64_t get_read_format() const override { return read_format_; }
 
  private:
   uint64_t time_enabled_offset_;
@@ -51,8 +53,7 @@ class SingleEventController {
   std::vector<std::byte> buffer_;
 };
 
-template <typename T>
-inline std::error_code SingleEventController::control_event(unsigned long request, T arg) const {
+inline std::error_code SingleEventController::control(unsigned long request, void* arg) const {
   if (this->fd_ == -1) {
     return std::make_error_code(std::errc::bad_file_descriptor);
   }

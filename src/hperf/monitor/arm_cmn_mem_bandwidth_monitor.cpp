@@ -71,11 +71,11 @@ std::error_code ArmCmnMemBWMonitor::start() {
 
 std::error_code ArmCmnMemBWMonitor::start_helper(std::vector<std::pair<SingleEventController, std::tuple<uint64_t, uint64_t, uint64_t>>>& vec) {
   for (auto& monitor : vec) {
-    auto reset_err = monitor.first.reset_event();
+    auto reset_err = monitor.first.reset();
     if (reset_err) {
       return reset_err;
     }
-    auto enable_err = monitor.first.enable_event();
+    auto enable_err = monitor.first.enable();
     if (enable_err) {
       return enable_err;
     }
@@ -97,7 +97,7 @@ std::error_code ArmCmnMemBWMonitor::stop() {
 
 std::error_code ArmCmnMemBWMonitor::stop_helper(std::vector<std::pair<SingleEventController, std::tuple<uint64_t, uint64_t, uint64_t>>>& vec) {
   for (auto& monitor : vec) {
-    auto err = monitor.first.disable_event();
+    auto err = monitor.first.disable();
     if (err) {
       return err;
     }
@@ -120,7 +120,7 @@ std::error_code ArmCmnMemBWMonitor::get_bandwidth(uint64_t& up_bandwidth, uint64
 std::error_code ArmCmnMemBWMonitor::get_bandwidth_helper(uint64_t& bandwidth, std::vector<std::pair<SingleEventController, std::tuple<uint64_t, uint64_t, uint64_t>>>& vec) {
   uint64_t delta_total_value = 0, delta_total_time_enabled = 0, delta_total_time_running = 0;
   for (auto& monitor : vec) {
-    auto read_err = monitor.first.read_event();
+    auto read_err = monitor.first.read();
     if (read_err) {
       return read_err;
     }

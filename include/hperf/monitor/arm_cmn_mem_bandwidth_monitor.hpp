@@ -10,8 +10,8 @@
 #include <tuple>
 #include <vector>
 
+#include "hperf/monitor/event_controller/single_event_controller.hpp"
 #include "hperf/monitor/perf_event_attr.hpp"
-#include "hperf/monitor/single_event_controller.hpp"
 #include "hperf/profile_config.h"
 
 namespace fs = std::filesystem;
