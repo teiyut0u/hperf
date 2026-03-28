@@ -93,7 +93,7 @@ std::error_code add_arm_cmn_mem_bw_monitor(
   } else {
     event_vec.emplace_back();
   }
-  if (monitor_target == ARM_CMN_MEM_BW_UP ||
+  if (monitor_target == ARM_CMN_MEM_BW_DOWN ||
       monitor_target == ARM_CMN_MEM_BW_ALL) {
     event_vec.emplace_back("watchpoint_down");
   } else {
