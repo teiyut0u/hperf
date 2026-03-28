@@ -15,11 +15,11 @@ class GeneralMonitor {
  public:
   GeneralMonitor() {}
 
-  std::errc set_monitor(
+  std::errc set_controller(
       std::vector<std::unique_ptr<EventControllerInterface>>&& controller_ptr_vec);
-  std::errc add_monitor(
+  std::errc add_controller(
       std::vector<std::unique_ptr<EventControllerInterface>>&& controller_vec);
-  std::errc add_monitor(std::unique_ptr<EventControllerInterface>&& controller);
+  std::errc add_controller(std::unique_ptr<EventControllerInterface>&& controller);
 
   void clear();
 

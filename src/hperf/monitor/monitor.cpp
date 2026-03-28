@@ -5,6 +5,7 @@
 #include <csignal>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -127,7 +128,7 @@ std::error_code add_arm_cmn_mem_bw_monitor(
     // add monitor
     auto add_monitor_errc =
         monitor_vec.emplace_back()
-            .add_monitor(std::move(event_controller_ptr_vec));
+            .add_controller(std::move(event_controller_ptr_vec));
     if (add_monitor_errc != std::errc()) {
       return std::make_error_code(add_monitor_errc);
     }
@@ -157,7 +158,8 @@ void do_monitor(std::vector<GeneralMonitor>& monitor_vec, const int interval, co
       if (scaled_count.empty()) {
         output << "none";
       } else {
-        output << std::accumulate(scaled_count.cbegin(), scaled_count.cend(), 0ULL);
+        // get total data flit count, each flit is 32 bytes
+        output << 32 * std::accumulate(scaled_count.cbegin(), scaled_count.cend(), 0UL);
       }
     }
     output << std::endl;

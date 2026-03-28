@@ -11,7 +11,7 @@
 
 #include "hperf/monitor/event_controller/event_controller_interface.hpp"
 
-std::errc GeneralMonitor::set_monitor(
+std::errc GeneralMonitor::set_controller(
     std::vector<std::unique_ptr<EventControllerInterface>>&& controller_ptr_vec) {
   event_monitor_vec_.clear();
   event_monitor_vec_.reserve(controller_ptr_vec.size());
@@ -22,7 +22,7 @@ std::errc GeneralMonitor::set_monitor(
       event_monitor_vec_.emplace_back(
           std::move(controller_ptr),
           std::make_tuple(
-              std::vector<uint64_t>{controller_size, 0}, 0, 0));
+              std::vector<uint64_t>(controller_size, 0), 0, 0));
     } else {
       return std::errc::invalid_argument;
     }
@@ -30,7 +30,7 @@ std::errc GeneralMonitor::set_monitor(
   return std::errc();
 }
 
-std::errc GeneralMonitor::add_monitor(std::vector<std::unique_ptr<EventControllerInterface>>&& controller_ptr_vec) {
+std::errc GeneralMonitor::add_controller(std::vector<std::unique_ptr<EventControllerInterface>>&& controller_ptr_vec) {
   event_monitor_vec_.reserve(
       event_monitor_vec_.size() + controller_ptr_vec.size());
   for (auto&& controller_ptr : controller_ptr_vec) {
@@ -42,12 +42,12 @@ std::errc GeneralMonitor::add_monitor(std::vector<std::unique_ptr<EventControlle
     this->event_monitor_vec_.emplace_back(
         std::move(controller_ptr),
         std::make_tuple(
-            std::vector<uint64_t>{controller_size, 0}, 0, 0));
+            std::vector<uint64_t>(controller_size, 0), 0, 0));
   }
   return std::errc();
 }
 
-std::errc GeneralMonitor::add_monitor(std::unique_ptr<EventControllerInterface>&& controller_ptr) {
+std::errc GeneralMonitor::add_controller(std::unique_ptr<EventControllerInterface>&& controller_ptr) {
   if (!GeneralMonitor::validate_read_format(
           controller_ptr->get_read_format())) {
     return std::errc::invalid_argument;
@@ -56,7 +56,7 @@ std::errc GeneralMonitor::add_monitor(std::unique_ptr<EventControllerInterface>&
   this->event_monitor_vec_.emplace_back(
       std::move(controller_ptr),
       std::make_tuple(
-          std::vector<uint64_t>{controller_size, 0}, 0, 0));
+          std::vector<uint64_t>(controller_size, 0), 0, 0));
   return std::errc();
 }
 
