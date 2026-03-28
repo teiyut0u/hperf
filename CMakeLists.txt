@@ -57,3 +57,4 @@ target_compile_options(hperf PRIVATE -Wall -fexceptions)
 # Test
 # ==========================================
 add_subdirectory(test)
+add_subdirectory("test/monitor")
