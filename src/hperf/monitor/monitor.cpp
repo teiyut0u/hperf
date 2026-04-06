@@ -137,6 +137,7 @@ std::error_code add_arm_cmn_mem_bw_monitor(
 }
 
 void do_monitor(std::vector<GeneralMonitor>& monitor_vec, const int interval, const std::chrono::steady_clock::time_point& end_time, std::ofstream& output) {
+  const double interval_in_sec = double(interval) / 1000;
   // setup
   std::chrono::steady_clock::time_point next_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(interval);
   // monitor loop
@@ -159,7 +160,9 @@ void do_monitor(std::vector<GeneralMonitor>& monitor_vec, const int interval, co
         output << "none";
       } else {
         // get total data flit count, each flit is 32 bytes
-        output << 32 * std::accumulate(scaled_count.cbegin(), scaled_count.cend(), 0UL);
+        output << static_cast<uint64_t>(
+            (std::accumulate(scaled_count.cbegin(), scaled_count.cend(), 0UL) << 5) /
+            interval_in_sec);
       }
     }
     output << std::endl;
