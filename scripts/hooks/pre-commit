@@ -1,0 +1,37 @@
+#!/bin/bash
+# pre-commit hook: check C++/header files with clang-format
+# Aborts commit if any staged file does not comply with .clang-format
+
+if [ -n "$NDK_HOME" ] && [ -x "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-format" ]; then
+    CLANG_FORMAT="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-format"
+elif command -v clang-format &>/dev/null; then
+    CLANG_FORMAT=clang-format
+else
+    echo "[pre-commit] ERROR: clang-format not found. Set NDK_HOME or install clang-format."
+    exit 1
+fi
+
+# Collect staged .cpp / .h files
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cpp|h)$')
+
+if [ -z "$STAGED_FILES" ]; then
+    exit 0
+fi
+
+FAILED=0
+for FILE in $STAGED_FILES; do
+    if ! "$CLANG_FORMAT" --dry-run --Werror "$FILE" 2>/dev/null; then
+        echo "[pre-commit] Format violation: $FILE"
+        FAILED=1
+    fi
+done
+
+if [ "$FAILED" -ne 0 ]; then
+    echo ""
+    echo "[pre-commit] Commit aborted: format check failed."
+    echo "  Fix automatically: find src include -name '*.cpp' -o -name '*.h' | xargs \"$CLANG_FORMAT\" -i"
+    echo "  Or fix single file: \"$CLANG_FORMAT\" -i <file>"
+    exit 1
+fi
+
+exit 0

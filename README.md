@@ -1,54 +1,58 @@
-TODO: 修改为 hperf 的 README
-
 # hperf
 
-微架构数据采集工具，相较于 simpleperf stat 的优势：
+硬件性能分析工具套件，支持 Android 移动端和 Linux 服务器两个平台。
 
-- 测量效率提高：通过复用计数器的方法，处理需要测量的性能指标数量大于可用性能计数器数量的冲突，能在一次测量中获得需要的所有指标；
-- 开销降低：通过事件分组，以事件组为单位进行控制与计数值读取，大幅减少测量过程中系统调用次数。
+核心功能：
+- **CPU PMU 性能分析**（hperf）：通过复用计数器，在一次测量中获得所有需要的微架构指标；通过事件分组大幅减少系统调用开销
+- **Arm CMN 内存带宽监测**（hperf `--monitor`，仅 Linux）：通过 CMN 片上网络 watchpoint 事件监测内存控制器上下行流量
+- **GPU 性能分析**（gperf，仅 Android）：基于 Arm hwcpipe 实时监测 Mali GPU 性能指标
 
 ## 编译与安装
 
-项目使用 CMake 构建，工具链由 NDK 提供，构建时需要指定 CPU 型号。
+项目使用 CMake 构建，提供两种构建预设：
+
+### Android 构建（交叉编译）
+
+工具链由 NDK 提供。
 
 > 开发使用的 NDK 版本：29.0.13599879
 
-目前已经预设两组构建配置：
+构建前，确保环境变量 `NDK_HOME` 指向 NDK 的根目录。
 
-- `android-arm64-oryon` 适用于高通 SM8750，SM8850 等采用高通自研 Oryon 核心的 SoC 平台
-- `android-arm64-cortex-x4` 适用于 MTK 等使用 Arm 公版核心的 SoC 平台
+```bash
+# 配置
+cmake --preset android-arm64
 
-构建前，确保环境变量 `NDK_HOME` 指向 NDK 的根目录（即有 `ndk-build`，`ndk-gdb` 等可执行程序的目录）。
+# 编译
+cmake --build --preset android-arm64
 
-在仓库根目录，选择一组预设配置生成构建目录，例如：
-
-```
-$ cmake --preset android-arm64-oryon
-```
-
-这会生成该预设配置的构建目录 `/build/android-arm64-oryon/`。
-
-接着执行构建操作：
-
-```
-$ cmake --build --preset android-arm64-oryon
+# 部署到设备（按 CPU 型号选择 target）
+cmake --build --preset android-arm64 --target deploy-oryon       # 高通 Oryon 核心
+cmake --build --preset android-arm64 --target deploy-cortex_x4   # Arm 公版 Cortex-X4
+cmake --build --preset android-arm64 --target deploy-c1_ultra    # C1-Ultra
+cmake --build --preset android-arm64 --target deploy-ustress     # Ustress 评估配置
 ```
 
-这会在构建目录生成 `hperf` 的可执行程序。
+deploy target 会将可执行程序和对应的 TOML 配置文件推送到设备的 `/data/local/tmp/` 目录下。
 
-此外，在执行构建时，可以直接将构建产物部署到移动端：
+### Linux 构建（原生编译）
 
+使用系统编译器（g++ 或 clang++），无需 NDK。
+
+```bash
+cmake --preset linux
+cmake --build --preset linux
 ```
-cmake --build --preset android-arm64-oryon --target deploy
-```
 
-这会将可执行程序推送到移动端设备的 `/data/local/tmp/` 目录下，并且赋予执行权限。
+Linux 构建包含 hperf + CMN 带宽监测模块，不包含 gperf。
 
 ## 运行
 
+### CPU 工具 hperf
+
 使用 `-h` 选项列出使用说明与测量的性能事件。
 
-### 模式1: 全局测量
+#### 模式1: 全局测量
 
 全量采集，会收集每个 CPU 的 PMU 数据，开销较大：
 
@@ -66,7 +70,7 @@ $ adb shell
 
 原始数据格式：`timestamp,cpu,group,event,value` 时间戳，CPU ID，事件组序号，事件名称，在此间隔内的事件计数值。
 
-### 模式2: 跟踪进程
+#### 模式2: 跟踪进程
 
 指定进程号，仅收集该进程的 PMU 数据：
 
@@ -106,11 +110,13 @@ $ adb shell
 
 > 假设这个程序需要运行 5s，但是命令行指定采集 3s，那么还是只采集 3s 的数据。
 
-### 探测可用性能计数器数量与自适应分组
+#### 探测可用性能计数器数量与自适应分组
 
 可以使用 `--detect-counters` 选项探测当前平台每个 CPU 上可用硬件性能计数器的数量。
 
-> simpleperf 也有类似的功能，但是在 MTK 平台通常会失效，hperf 重新实现了探测逻辑。
+> simpleperf 也有类似的功能（`simpleperf stat --print-hw-counter`），但是在 MTK 平台通常会失效（探测结果是 0，不符合实际情况），hperf 重新实现了探测逻辑。
+
+例如在高通的某台机器上，探测结果如下：
 
 ```
 # ./hperf --detect-counters
@@ -150,7 +156,7 @@ After:
 
 > 由于探测计数器数量需要一定时间，因此做了探测结果的缓存：在同一台机器上，只需要完成一次探测即可，后续会利用缓存的结果进行分组优化。
 
-## 输出
+#### 输出
 
 数据完成采集后，输出性能事件的统计报告，其中输出的计数值是根据复用计数器各事件占用的事件比例进行估计后的结果。
 
@@ -229,10 +235,122 @@ Memory access latency:
 
 若系统全局测量，事件计数值是每个 CPU 上事件计数值之和，并且是估计后的结果。
 
+#### 模式4: CMN 内存带宽监测（仅 Linux）
+
+针对使用 Arm CMN（Coherent Mesh Network）片上网络的服务器处理器，监测内存控制器的上下行数据流量。
+
+**前置步骤：探测内存控制器位置**
+
+首次使用前，需要运行探测脚本确定内存控制器在 CMN 网格中的物理位置：
+
+```bash
+# 编译内存负载工具（用于探测）
+gcc -O2 -fopenmp tools/src/my_workload.c -o tools/bin/test_mc_pos_workload
+
+# 运行探测脚本（需要 root 权限和 perf 工具）
+python3 tools/scripts/detect_mc_pos.py /tmp/mc_positions.txt
+```
+
+> 探测脚本依赖 `pandas` 和 `scikit-learn`（`pip install pandas scikit-learn`），通过 KMeans 聚类分析 perf 计数器数据自动识别 MC 端口位置。
+
+探测结果示例（`/tmp/mc_positions.txt`）：
+```
+arm_cmn_0 2
+0x28
+0x48
+```
+
+**运行带宽监测**
+
+```bash
+# 监测所有方向的内存带宽，持续 30 秒，每秒采样一次
+./hperf --monitor arm_cmn_mem_bw_all --cmn-mc-pos /tmp/mc_positions.txt -d 30 -i 1000
+
+# 仅监测上行（读）带宽，输出到 CSV 文件
+./hperf --monitor arm_cmn_mem_bw_up --cmn-mc-pos /tmp/mc_positions.txt -d 10 -i 500 -o bandwidth.csv
+
+# 不限时长，Ctrl+C 停止
+./hperf --monitor arm_cmn_mem_bw_all --cmn-mc-pos /tmp/mc_positions.txt -i 1000
+```
+
+监测目标选项：
+- `arm_cmn_mem_bw_all`：同时监测上行（读）和下行（写）带宽
+- `arm_cmn_mem_bw_up`：仅监测上行带宽
+- `arm_cmn_mem_bw_down`：仅监测下行带宽
+
+输出格式：`timestamp,bandwidth_up,bandwidth_down`（单位：字节/间隔）
+
+### GPU 工具 gperf
+
+使用 `-h` 选项列出使用说明。
+
+使用 `--print-info` 选项列出 Arm Mali GPU 的硬件架构配置信息和支持的性能事件。
+
+#### 全局测量
+
+目前 gperf 针对 Arm Mali GPU 的工作队列和系统内存读写，设计了固定的性能指标，并做了可视化，例如：
+
+```
+./gperf -d 10 -i 1000
+```
+
+其中 `-d 10` 采集时间 10s，`-i 1000` 采样间隔 1000 ms。这之后，会在屏幕上以可视化方式实时显示信息。
+
+```
+                  GPU Active Cycles  [    416117310 ]
+                                     (   41.532 MHz )
+                                             │
+                        ┌────────────────────┼─────────────────────┐
+                        │                    │                     │
+          Jobs     [     788 ]          [   27833 ]           [    2433 ]
+                  (     79 /s )        (   2778 /s )         (    243 /s )
+                        │                    │                     │
+   Work Queues    Compute Queue      Binning Phase Queue    Main Phase Queue
+ Active Cycles   [      4049926 ]     [     23585821 ]      [    211589665 ]
+                 (    0.404 MHz )     (    2.354 MHz )      (   21.118 MHz )
+                        │                    │                     │
+   Utilization     [  0.97 % ]          [  5.67 % ]           [ 50.85 % ]
+                        │                    │                     │
+         Tasks    [      3851 ]        [    947389 ]         [    889303 ]
+                 (      384 /s )      (    94558 /s )       (    88760 /s )
+                        │                    │                     │
+                ┌───────┴────────────────────┴─────────────────────┴───────┐
+                │                       Shader Cores                       │
+                └───────────────┬────────────────────────┬─────────────────┘
+                                │                        │
+                        External Read Port      External Write Port
+                                │                        │
+     Bandwidth          [   137.105 MiB/s ]     [   143.455 MiB/s ]
+       Latency          [   248.37 Cycles ]
+```
+
+测量结束后，输出这一段时间聚合后的性能数据。
+
+也可以加上 `-o test.csv` 选项，将测量结果以 CSV 文件格式输出。 
+
 ## 代码开发相关备注
 
-### clangd 相关
+### Git Hooks 配置
 
-clangd 代码提示：会根据 compile_commands.json 进行代码提示，生成构建目录时会自动生成，在 `build/{PresetName}/` 目录下，其中 PresetName 是预设配置的名字。为了使得代码提示生效，需要在 VSCode 配置文件 `.vscode/settings.json` 中设置 `clangd.arguments` 的 `--compile-commands-dir` 指向 compile_commands.json 所在目录，因此在切换预设配置时候，可能需要手动调整一下。
+仓库提供了 pre-commit hook，在提交代码时自动检查 C++ 文件的格式规范（基于 `.clang-format`）。Hook 脚本位于 `scripts/hooks/pre-commit`，**克隆仓库后需执行一次以下命令启用**：
 
-.clang-format 文件，用于按照 Google 风格格式化代码。
+```bash
+git config core.hooksPath scripts/hooks
+```
+
+Hook 会优先使用 `$NDK_HOME` 中自带的 `clang-format`，无需额外安装。若格式检查不通过，提交会被中止，并提示修复命令。
+
+### clangd 代码提示
+
+CMake 配置时会自动在项目根目录创建 `compile_commands.json` 的符号链接，指向最近一次配置的构建目录。切换预设时只需重新运行 `cmake --preset <name>` 即可自动更新。
+
+`.clang-format` 文件用于按照 Google 风格格式化代码。
+
+### 增加针对新 CPU 平台的支持
+
+PMU 事件和指标的配置已外置为 TOML 文件，添加新平台支持**无需修改任何 C++ 源文件**：
+
+1. 在 `config/` 下新建 `cpu_<name>.toml`，定义 `fixed_events`、`event_groups`、`metric_sections`
+2. 在 `CMakeLists.txt` 的 `CPU_DEPLOY_LIST` 中追加 `<name>`
+
+即可通过 `cmake --build --preset android-arm64 --target deploy-<name>` 部署到设备。

@@ -1,28 +1,55 @@
 #pragma once
 
-#include <linux/perf_event.h>  // for PERF_TYPE_* marcos
+#include <cstddef>
+#include <string>
+#include <vector>
 
 #include "pmu_event.h"  // for struct PMUEvent
 
-#include <cstddef>
-#include <vector>
+/**
+ * @brief A single metric item: name, display type, and arithmetic expression.
+ */
+struct MetricItem {
+  std::string name;
+  std::string type;  // "decimal" | "percentage" | "GHz" | "cycles"
+  std::string expr;
+};
 
 /**
- * @brief PMU event configuration for the specified CPU, including the static information about event groups and events. 
- * 
+ * @brief A named group of metric items displayed under a common section heading.
+ */
+struct MetricSection {
+  std::string title;
+  std::vector<MetricItem> items;
+};
+
+/**
+ * @brief PMU event configuration for the specified CPU, loaded at runtime from a TOML file.
+ *
+ * Holds fixed events, schedulable event groups, and metric definitions.
  */
 class PMUConfig {
  public:
   /**
-   * @brief Construct a new PMUConfig object
-   *
-   * Loads the PMU config based on the CPU type defined at compile time. 
+   * @brief Construct an empty PMUConfig. Call load_from_file() to populate it.
    */
   PMUConfig();
 
   /**
-   * @brief Check whether the fixed events and the event groups are empty
-   * 
+   * @brief Load the PMU configuration from a TOML file.
+   *
+   * Populates fixed_events_, event_groups_, and metric_sections_.
+   * Also validates that the result is non-empty (equivalent to is_valid()).
+   *
+   * @param path Absolute or relative path to the .toml config file.
+   * @throws HperfError if the file cannot be parsed, a required field is
+   *         missing, or the loaded configuration is invalid.
+   */
+  void load_from_file(const std::string& path);
+
+  /**
+   * @brief Check whether the fixed events and the event groups are non-empty.
+   *
    * @return true Valid
    * @return false Invalid
    */
@@ -30,65 +57,66 @@ class PMUConfig {
 
   /**
    * @brief Get the PMU event based on group index and event index.
-   * Indices start from 0, and also note that the first events in each event group are fixed events. 
+   * Indices start from 0; the first events in each group are fixed events.
    *
    * @param group_idx The event group index, starting from 0
    * @param event_idx The event index in the group, starting from 0
-   * @return const PMUEvent& 
+   * @return const PMUEvent&
    */
   const PMUEvent& get_pmu_event(size_t group_idx, size_t event_idx) const;
 
   /**
-   * @brief Get the vector of PMU event information of the fixed events. 
-   * 
-   * @return const std::vector<PMUEvent>& 
+   * @brief Get the fixed events vector.
    */
   const std::vector<PMUEvent>& get_fixed_events() const;
 
   /**
-   * @brief Get the vector of PMU event information of the specified event group specified by the index. 
-   * If the index is invalid, an empty vector will be returned. 
-   * 
+   * @brief Get the schedulable event group at the given index.
+   * Returns an empty vector and prints an error if the index is out of range.
+   *
    * @param idx The event group index, starting from 0
-   * @return const std::vector<PMUEvent>& 
    */
   const std::vector<PMUEvent>& get_event_group_by_idx(size_t idx) const;
 
   /**
-   * @brief Get the number of event groups
-   * 
-   * @return size_t The number of event groups
+   * @brief Get the number of schedulable event groups.
    */
   size_t get_event_group_num() const;
 
   /**
-   * @brief Print the PMU config to the console
-   *
-   * Display the events information (name, encoding, description) in each event group. 
+   * @brief Get the metric sections loaded from the config file.
+   */
+  const std::vector<MetricSection>& get_metric_sections() const;
+
+  /**
+   * @brief Print the full PMU config to stdout.
    */
   void print_pmu_config() const;
 
+  /**
+   * @brief Print each schedulable event group as a single comma-separated line to stdout.
+   *        Used to visualize group layout before and after adaptive_grouping().
+   */
   void print_event_groups_by_line() const;
 
   /**
-   * @brief Optimize event groups by merging the original event groups as many as possible.
-   * The optimization will modified the original event groups. 
-   * 
-   * @param programmable_counter_num The number of the detected programmable counters
+   * @brief Merge event groups greedily while respecting the counter budget.
+   *
+   * @param programmable_counters_num The number of detected programmable counters
+   *        available for schedulable events.
    */
-  void adaptive_grouping(size_t programmable_counters_num); 
+  void adaptive_grouping(size_t programmable_counters_num);
 
  private:
-  /**
-   * @brief 
-   * 
-   */
   std::vector<PMUEvent> fixed_events_;
 
   /**
-   * @brief The PMU config loaded from CPU-specific header file
-   *
-   * Each inner vector represents an event group, and its inner vector represent an event config in this event group.
+   * @brief Schedulable event groups. Each inner vector is one group.
    */
   std::vector<std::vector<PMUEvent>> event_groups_;
+
+  /**
+   * @brief Metric definitions loaded from the TOML config file.
+   */
+  std::vector<MetricSection> metric_sections_;
 };
