@@ -32,8 +32,15 @@ class GroupReadBuffer {
    *
    * @param event_num The number of events (the number of fixed events + the number of schedulable events in an event group)
    */
+  // Verify that the struct layout is all uint64_t fields with no padding
+  static_assert(sizeof(Header) == 3 * sizeof(uint64_t), "Header layout mismatch");
+  static_assert(sizeof(Entry) == 2 * sizeof(uint64_t), "Entry layout mismatch");
+
   explicit GroupReadBuffer(size_t event_num)
-      : buf_(header_size() + event_num * entry_size()) {}
+      : event_num_(event_num), buf_((header_size() + event_num * entry_size()) / sizeof(uint64_t)) {}
+
+  /** @brief Return the number of events this buffer was sized for. */
+  size_t event_num() const { return event_num_; }
 
   /**
    * @brief Get the pointer to the group reading buffer
@@ -47,7 +54,7 @@ class GroupReadBuffer {
    *
    * @return size_t
    */
-  size_t size() const { return buf_.size(); }
+  size_t size() const { return buf_.size() * sizeof(uint64_t); }
 
   uint64_t nr() const { return header()->nr; }
 
@@ -64,7 +71,7 @@ class GroupReadBuffer {
    */
   std::optional<Entry> entry(size_t idx) const {
     if (idx >= nr()) return std::nullopt;
-    const Entry* base = reinterpret_cast<const Entry*>(buf_.data() + header_size());
+    const Entry* base = reinterpret_cast<const Entry*>(buf_.data() + header_size() / sizeof(uint64_t));
     return base[idx];
   }
 
@@ -78,7 +85,8 @@ class GroupReadBuffer {
      |
      buf_.data()
    */
-  std::vector<std::byte> buf_;
+  size_t event_num_;
+  std::vector<uint64_t> buf_;
 
   static constexpr size_t header_size() { return sizeof(Header); }
 
@@ -104,22 +112,24 @@ class SingleReadBuffer {
    * @brief Construct a new Single Read Buffer object
    *
    */
+  static_assert(sizeof(Entry) == 4 * sizeof(uint64_t), "SingleReadBuffer::Entry layout mismatch");
+
   explicit SingleReadBuffer()
-      : buf_(sizeof(Entry)) {}
+      : buf_(sizeof(Entry) / sizeof(uint64_t)) {}
 
   /**
-   * @brief Get the pointer to the group reading buffer
+   * @brief Get the pointer to the single reading buffer
    *
    * @return void*
    */
   void* data() { return buf_.data(); }
 
   /**
-   * @brief Get the size in byte of the group reading buffer
+   * @brief Get the size in bytes of the single reading buffer
    *
    * @return size_t
    */
-  size_t size() const { return buf_.size(); }
+  size_t size() const { return buf_.size() * sizeof(uint64_t); }
 
   uint64_t value() const { return entry()->value; }
 
@@ -134,7 +144,7 @@ class SingleReadBuffer {
    * @brief The buffer to store the data read from perf_event_open fd
    *
    */
-  std::vector<std::byte> buf_;
+  std::vector<uint64_t> buf_;
 
   const Entry* entry() const {
     return reinterpret_cast<const Entry*>(buf_.data());

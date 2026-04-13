@@ -12,27 +12,36 @@
 #include "hperf/args_parser.h"
 
 #include <getopt.h>
-#include <unistd.h>  // For sysconf
 
+#include <climits>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
 
-#include "hperf/pmu_config.h"
-#include "hperf/profile_config.h"
+// Long-only option IDs, starting above ASCII range to avoid collisions with short options
+enum LongOnlyOpt {
+  OPT_DETECT_COUNTERS = 256,
+  OPT_OPTIMIZE_EVENT_GROUPS,
+  OPT_MONITOR,
+  OPT_CMN_MC_POS,
+  OPT_USER_MODE_SCHED,
+  OPT_LIST_EVENTS,
+};
 
-bool ArgsParser::parse(ProfileConfig& profile_config, int argc, char** argv) {
-  const char* short_opts = "d:i:ac:p:o:h";
+bool ArgsParser::parse(ProfileConfig &profile_config, int argc, char **argv) {
+  const char *short_opts = "d:i:ac:p:o:h";
   const option long_opts[] = {{"duration", required_argument, nullptr, 'd'},
                               {"interval", required_argument, nullptr, 'i'},
                               {"system_wide", no_argument, nullptr, 'a'},
                               {"cpu", required_argument, nullptr, 'c'},
                               {"pid", required_argument, nullptr, 'p'},
                               {"output", required_argument, nullptr, 'o'},
-                              {"detect-counters", no_argument, nullptr, 1},
-                              {"optimize-event-groups", no_argument, nullptr, 2},
-                              {"monitor", required_argument, nullptr, 3},
-                              {"cmn-mc-pos", required_argument, nullptr, 4},
+                              {"detect-counters", no_argument, nullptr, OPT_DETECT_COUNTERS},
+                              {"optimize-event-groups", no_argument, nullptr, OPT_OPTIMIZE_EVENT_GROUPS},
+                              {"monitor", required_argument, nullptr, OPT_MONITOR},
+                              {"cmn-mc-pos", required_argument, nullptr, OPT_CMN_MC_POS},
+                              {"user-mode-sched", no_argument, nullptr, OPT_USER_MODE_SCHED},
+                              {"list-events", no_argument, nullptr, OPT_LIST_EVENTS},
                               {"help", no_argument, nullptr, 'h'},
                               {nullptr, 0, nullptr, 0}};
 
@@ -48,49 +57,99 @@ bool ArgsParser::parse(ProfileConfig& profile_config, int argc, char** argv) {
                             long_opts,
                             nullptr)) != -1) {
     switch (opt) {
-      case 'd':
-        profile_config.test_duration = std::atoi(optarg);
+      case 'd': {
+        try {
+          size_t pos;
+          int v = std::stoi(optarg, &pos);
+          if (pos != std::strlen(optarg) || v <= 0) throw std::invalid_argument("");
+          profile_config.test_duration = v;
+        } catch (...) {
+          std::cerr << "Error: Invalid duration '" << optarg << "', must be a positive integer.\n";
+          return false;
+        }
         break;
-      case 'i':
-        profile_config.switch_group_interval = std::atoi(optarg);
+      }
+      case 'i': {
+        try {
+          size_t pos;
+          int v = std::stoi(optarg, &pos);
+          if (pos != std::strlen(optarg) || v <= 0) throw std::invalid_argument("");
+          profile_config.switch_group_interval = v;
+        } catch (...) {
+          std::cerr << "Error: Invalid interval '" << optarg << "', must be a positive integer (ms).\n";
+          return false;
+        }
         break;
+      }
       case 'a':
         a_flag = true;
         break;
       case 'c':
         cpu_list_str = optarg;
         break;
-      case 'p':
-        p_flag = true;
-        profile_config.target_pid = std::atoi(optarg);
+      case 'p': {
+        try {
+          size_t pos;
+          int v = std::stoi(optarg, &pos);
+          if (pos != std::strlen(optarg) || v <= 0) throw std::invalid_argument("");
+          profile_config.target_pid = v;
+          p_flag = true;
+        } catch (...) {
+          std::cerr << "Error: Invalid PID '" << optarg << "', must be a positive integer.\n";
+          return false;
+        }
         break;
+      }
       case 'o':
         profile_config.output_filename = optarg;
         break;
-      case 1:
+      case OPT_DETECT_COUNTERS:
         profile_config.detect_counters = true;
         return true;  // if option '--detect-counters' specified, end parsing immediately
-      case 2:
+      case OPT_OPTIMIZE_EVENT_GROUPS:
         profile_config.optimize_event_groups = true;
         break;
-      case 3:
-        if (strcmp(optarg, "arm_cmn_mem_bw_all") == 0) {
-          profile_config.monitor_target = ARM_CMN_MEM_BW_ALL;
-        } else if (strcmp(optarg, "arm_cmn_mem_bw_up") == 0) {
-          profile_config.monitor_target = ARM_CMN_MEM_BW_UP;
-        } else if (strcmp(optarg, "arm_cmn_mem_bw_down") == 0) {
-          profile_config.monitor_target = ARM_CMN_MEM_BW_DOWN;
+      case OPT_MONITOR: {
+#ifdef __ANDROID__
+        std::cerr << "Error: --monitor is not supported on Android.\n";
+        return false;
+#else
+        std::string target(optarg);
+        if (target == "arm_cmn_mem_bw_all") {
+          profile_config.monitor_target = MonitorTarget::ARM_CMN_MEM_BW_ALL;
+        } else if (target == "arm_cmn_mem_bw_up") {
+          profile_config.monitor_target = MonitorTarget::ARM_CMN_MEM_BW_UP;
+        } else if (target == "arm_cmn_mem_bw_down") {
+          profile_config.monitor_target = MonitorTarget::ARM_CMN_MEM_BW_DOWN;
+        } else {
+          std::cerr << "Error: Unknown monitor target '" << target << "'.\n"
+                    << "       Supported targets: arm_cmn_mem_bw_all, arm_cmn_mem_bw_up, arm_cmn_mem_bw_down\n";
+          return false;
         }
         break;
-      case 4:
+#endif
+      }
+      case OPT_CMN_MC_POS:
+#ifdef __ANDROID__
+        std::cerr << "Error: --cmn-mc-pos is not supported on Android.\n";
+        return false;
+#else
         profile_config.mc_position_file = optarg;
         break;
+#endif
+      case OPT_USER_MODE_SCHED:
+        profile_config.user_mode_sched = true;
+        break;
+      case OPT_LIST_EVENTS:
+        profile_config.list_events = true;
+        return true;
       case 'h':
-        print_help(argv[0]);
-        exit(0);
+        profile_config.help_requested = true;
+        return true;
       default:
+        std::cerr << "Error: Unknown option.\n";
         print_help(argv[0]);
-        exit(1);
+        return false;
     }
   }
 
@@ -101,6 +160,20 @@ bool ArgsParser::parse(ProfileConfig& profile_config, int argc, char** argv) {
   if (!profile_config.command_args.empty()) {
     profile_config.command_args.push_back(nullptr);  // null-terminate the array
     cmd_flag = true;
+  }
+
+  // Monitor mode validation
+  if (profile_config.monitor_target != MonitorTarget::NO_MONITOR_TARGET) {
+    if (a_flag || p_flag || cmd_flag) {
+      std::cerr << "Error: --monitor cannot be used with -a, -p, or a command.\n";
+      return false;
+    }
+    if (profile_config.mc_position_file.empty()) {
+      std::cerr << "Error: --cmn-mc-pos <file> is required when using --monitor.\n"
+                << "       Run the MC position detection script first to generate this file.\n";
+      return false;
+    }
+    return true;  // monitor mode needs no further validation
   }
 
   // For validating the options ...
@@ -124,7 +197,7 @@ bool ArgsParser::parse(ProfileConfig& profile_config, int argc, char** argv) {
     return false;
   }
 
-  if (flags == 0 && profile_config.monitor_target == NO_MONITOR_TARGET) {
+  if (flags == 0) {
     std::cerr << "Error: You must specify either -a (system-wide), -p <PID> (per-process), "
               << "or provide a command to execute.\n";
     return false;
@@ -135,33 +208,18 @@ bool ArgsParser::parse(ProfileConfig& profile_config, int argc, char** argv) {
     return false;
   }
 
-  if (a_flag) {
-    int num_cpus = sysconf(_SC_NPROCESSORS_ONLN);  // the number of processors currently online.
-    if (!cpu_list_str.empty()) {
-      profile_config.cpu_id_list = parse_comma_sperated_list(cpu_list_str);
-      if (profile_config.cpu_id_list.empty()) {
-        std::cerr << "Error: Invalid CPU ID list (" << cpu_list_str << ").\n";
-        return false;
-      }
-    } else {  // no specify -c option, put all online CPUs in the list
-      for (int cpu = 0; cpu < num_cpus; ++cpu) {
-        profile_config.cpu_id_list.push_back(cpu);
-      }
+  if (a_flag && !cpu_list_str.empty()) {
+    profile_config.cpu_id_list = parse_comma_sperated_list(cpu_list_str);
+    if (profile_config.cpu_id_list.empty()) {
+      std::cerr << "Error: Invalid CPU ID list (" << cpu_list_str << ").\n";
+      return false;
     }
-  }
-
-  if ((profile_config.monitor_target == ARM_CMN_MEM_BW_ALL ||
-       profile_config.monitor_target == ARM_CMN_MEM_BW_UP ||
-       profile_config.monitor_target == ARM_CMN_MEM_BW_DOWN) &&
-      profile_config.mc_position_file.empty()) {
-    std::cerr << "Error: You must provide a file to specify the memory controllers positions when monitoring memory bandwidth.\n";
-    return false;
   }
 
   return true;
 }
 
-void ArgsParser::print_profile_config(const ProfileConfig& profile_config) {
+void ArgsParser::print_profile_config(const ProfileConfig &profile_config) {
   std::cout << "========= Profiling Configuration ==========\n";
 
   if (profile_config.test_duration > 0) {
@@ -170,7 +228,11 @@ void ArgsParser::print_profile_config(const ProfileConfig& profile_config) {
     std::cout << "Test duration: unlimited\n";
   }
 
-  std::cout << "Event group switch inteval: " << profile_config.switch_group_interval << " ms\n";
+  if (profile_config.user_mode_sched) {
+    std::cout << "Scheduling: user-mode (group switch every " << profile_config.switch_group_interval << " ms)\n";
+  } else {
+    std::cout << "Scheduling: kernel (print interval: " << profile_config.switch_group_interval << " ms)\n";
+  }
 
   std::cout << "Mode: ";
   switch (profile_config.mode) {
@@ -200,7 +262,7 @@ void ArgsParser::print_profile_config(const ProfileConfig& profile_config) {
   std::cout << "]\n";
 
   std::cout << "Output file name: " << profile_config.output_filename << "\n";
-  std::cout << "Output file descriptor: " << (profile_config.output_file_ptr ? "set" : "null") << "\n";
+  std::cout << "Output file descriptor: " << (profile_config.output_stream ? "set" : "null") << "\n";
   std::cout << "Target PID: " << profile_config.target_pid << "\n";
 
   std::cout << "Command Args: [";
@@ -231,23 +293,24 @@ std::vector<int> ArgsParser::parse_comma_sperated_list(std::string cpu_id_str) {
 
     size_t dash_pos = token.find('-');
     if (dash_pos == std::string::npos) {  // a single CPU ID
-      char* endptr = nullptr;
-      int cpu = std::strtol(token.c_str(), &endptr, 10);
-      if (*endptr != '\0' || cpu < 0) {
+      char *endptr = nullptr;
+      long cpu_l = std::strtol(token.c_str(), &endptr, 10);
+      if (*endptr != '\0' || cpu_l < 0 || cpu_l > INT_MAX) {
         return std::vector<int>();
       }
-      result.push_back(cpu);
+      result.push_back(static_cast<int>(cpu_l));
     } else {  // a CPU ID range
       std::string start_str = token.substr(0, dash_pos);
       std::string end_str = token.substr(dash_pos + 1);
-      char* endptr1 = nullptr;
-      char* endptr2 = nullptr;
-      int start = std::strtol(start_str.c_str(), &endptr1, 10);
-      int end = std::strtol(end_str.c_str(), &endptr2, 10);
-      if (*endptr1 != '\0' || *endptr2 != '\0' || start < 0 || end < 0 || end < start) {
+      char *endptr1 = nullptr;
+      char *endptr2 = nullptr;
+      long start_l = std::strtol(start_str.c_str(), &endptr1, 10);
+      long end_l = std::strtol(end_str.c_str(), &endptr2, 10);
+      if (*endptr1 != '\0' || *endptr2 != '\0' || start_l < 0 || end_l < 0 ||
+          end_l < start_l || start_l > INT_MAX || end_l > INT_MAX) {
         return std::vector<int>();
       }
-      for (int i = start; i <= end; ++i) {
+      for (int i = static_cast<int>(start_l); i <= static_cast<int>(end_l); ++i) {
         result.push_back(i);
       }
     }
@@ -257,7 +320,7 @@ std::vector<int> ArgsParser::parse_comma_sperated_list(std::string cpu_id_str) {
   return result;
 }
 
-void ArgsParser::print_help(const char* program_name) {
+void ArgsParser::print_help(const char *program_name) {
   std::cout
       << "Usage: " << program_name << " [options] [command [command-args]]\n"
       << "         Efficiently collect PMU data by multiplexing hardware counters.\n"
@@ -273,6 +336,12 @@ void ArgsParser::print_help(const char* program_name) {
       << "  -o, --output <file>         Print the raw data into the designated file.\n"
       << "      --detect-counters       Detect the number of programmable hardware counters on each CPU and exit.\n"
       << "      --optimize-event-groups Detect counters, and use the result to optimize default event groups.\n"
+      << "      --list-events           Print the PMU event list from the config file and exit.\n"
+      << "      --monitor <target>      CMN memory bandwidth monitoring mode (Linux only).\n"
+      << "                              Targets: arm_cmn_mem_bw_all, arm_cmn_mem_bw_up, arm_cmn_mem_bw_down\n"
+      << "      --cmn-mc-pos <file>     Memory controller position file (required with --monitor).\n"
+      << "      --user-mode-sched       Use userspace event group scheduling (legacy).\n"
+      << "                              Default: kernel handles multiplexing.\n"
       << "  -h, --help                  Show this help message and exit.\n"
       << "\nExample:\n"
       << "  Specify a PID\n"
@@ -281,8 +350,6 @@ void ArgsParser::print_help(const char* program_name) {
       << "    " << program_name << " -i 500 /bin/sleep 10\n"
       << "  System-wide monitor\n"
       << "    " << program_name << " -a -d 10 -i 1000\n"
-      << "\nPMU Events List:\n";
-
-  PMUConfig pmu_config;
-  pmu_config.print_pmu_config();
+      << "  CMN bandwidth monitor\n"
+      << "    " << program_name << " --monitor arm_cmn_mem_bw_all --cmn-mc-pos mc_pos.txt -d 30 -i 1000\n";
 }

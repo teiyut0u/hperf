@@ -1,0 +1,114 @@
+# C1-Ultra PMU events configuration
+# Applicable SoC platforms: MT6993 (Dimensity 9500)
+# Arm C1-Ultra + C1-Premium + C1-Pro
+# 1 fixed counter + 18+ programmable counters per core
+
+[cpu]
+name = "c1_ultra"
+
+# ── Fixed events (always measured) ─────────────────────────────────────────
+[[fixed_events]]
+name        = "cpu_cycles"
+description = "Cycle"
+encoding    = 0x11
+
+[[fixed_events]]
+name        = "cnt_cycles"
+description = "Constant frequency cycles"
+encoding    = 0x4004
+
+[[fixed_events]]
+name        = "inst_retired"
+description = "Instruction architecturally executed"
+encoding    = 0x08
+
+# ── Schedulable event groups ────────────────────────────────────────────────
+[[event_groups]]
+events = [
+  { name = "inst_spec",        description = "Operation speculatively executed",                              encoding = 0x1b },
+  { name = "ld_spec",          description = "Operation speculatively executed, load",                        encoding = 0x70 },
+  { name = "st_spec",          description = "Operation speculatively executed, store",                       encoding = 0x71 },
+  { name = "dp_spec",          description = "Operation speculatively executed, integer data processing",     encoding = 0x73 },
+  { name = "vfp_spec",         description = "Operation speculatively executed, scalar floating-point",       encoding = 0x75 },
+  { name = "ase_spec",         description = "Operation speculatively executed, Advanced SIMD",               encoding = 0x74 },
+  { name = "br_immed_spec",    description = "Branch Speculatively executed, immediate branch",               encoding = 0x78 },
+  { name = "br_indirect_spec", description = "Branch Speculatively executed, indirect branch",                encoding = 0x7a },
+  { name = "br_return_spec",   description = "Branch Speculatively executed, procedure return",               encoding = 0x79 },
+]
+
+[[event_groups]]
+events = [
+  { name = "l1d_cache_refill",    description = "Level 1 data cache refill",                                           encoding = 0x03 },
+  { name = "l1i_cache_refill",    description = "Level 1 instruction cache refill",                                    encoding = 0x01 },
+  { name = "l2d_cache_refill",    description = "Level 2 data cache refill",                                           encoding = 0x17 },
+  { name = "l3d_cache_refill",    description = "Attributable level 3 cache refill",                                   encoding = 0x2a },
+  { name = "l1d_tlb_refill",      description = "Level 1 data TLB refill",                                             encoding = 0x05 },
+  { name = "l1i_tlb_refill",      description = "Level 1 instruction TLB refill",                                      encoding = 0x02 },
+  { name = "br_mis_pred_retired", description = "Branch Instruction architecturally executed, mispredicted",           encoding = 0x22 },
+]
+
+[[event_groups]]
+events = [
+  { name = "bus_access_rd",        description = "Bus access, read",                                               encoding = 0x60   },
+  { name = "bus_access_wr",        description = "Bus access, write",                                              encoding = 0x61   },
+  { name = "mem_access_rd",        description = "Data memory access, read",                                       encoding = 0x66   },
+  { name = "mem_access_rd_percyc", description = "Total cycles, mem_access_rd",                                    encoding = 0x8121 },
+  { name = "dtlb_walk",            description = "Data TLB access with at least one translation table walk",       encoding = 0x34   },
+  { name = "itlb_walk",            description = "Instruction TLB access with at least one translation table walk", encoding = 0x35  },
+  { name = "dtlb_walk_percyc",     description = "Total cycles, dtlb_walk",                                        encoding = 0x8128 },
+  { name = "itlb_walk_percyc",     description = "Total cycles, itlb_walk",                                        encoding = 0x8129 },
+]
+
+# ── Performance metrics ─────────────────────────────────────────────────────
+[[metric_sections]]
+title = "Pipeline basic metrics"
+items = [
+  { name = "CPI",               type = "decimal",    expr = "cpu_cycles / inst_retired" },
+  { name = "CPU utilization",   type = "percentage", expr = "cnt_cycles * 1000000000 / (cntfrq * total_time_ns)" },
+  { name = "Average frequency", type = "GHz",        expr = "cpu_cycles * cntfrq / (cnt_cycles * 1000000000)" },
+]
+
+[[metric_sections]]
+title = "Breakdown based on instruction mix"
+items = [
+  { name = "Load",                    type = "percentage", expr = "ld_spec / inst_spec" },
+  { name = "Store",                   type = "percentage", expr = "st_spec / inst_spec" },
+  { name = "Integer data processing", type = "percentage", expr = "dp_spec / inst_spec" },
+  { name = "Floating point",          type = "percentage", expr = "vfp_spec / inst_spec" },
+  { name = "Advanced SIMD",           type = "percentage", expr = "ase_spec / inst_spec" },
+  { name = "Immediate branch",        type = "percentage", expr = "br_immed_spec / inst_spec" },
+  { name = "Indirect branch",         type = "percentage", expr = "br_indirect_spec / inst_spec" },
+  { name = "Return branch",           type = "percentage", expr = "br_return_spec / inst_spec" },
+]
+
+[[metric_sections]]
+title = "Cache"
+items = [
+  { name = "L1D cache MPKI", type = "decimal", expr = "l1d_cache_refill * 1000 / inst_retired" },
+  { name = "L1I cache MPKI", type = "decimal", expr = "l1i_cache_refill * 1000 / inst_retired" },
+  { name = "L2 cache MPKI",  type = "decimal", expr = "l2d_cache_refill * 1000 / inst_retired" },
+  { name = "L3 cache MPKI",  type = "decimal", expr = "l3d_cache_refill * 1000 / inst_retired" },
+]
+
+[[metric_sections]]
+title = "TLB"
+items = [
+  { name = "L1D TLB MPKI",   type = "decimal", expr = "l1d_tlb_refill * 1000 / inst_retired" },
+  { name = "L1I TLB MPKI",   type = "decimal", expr = "l1i_tlb_refill * 1000 / inst_retired" },
+  { name = "DTLB walk PKI",  type = "decimal", expr = "dtlb_walk * 1000 / inst_retired" },
+  { name = "ITLB walk PKI",  type = "decimal", expr = "itlb_walk * 1000 / inst_retired" },
+]
+
+[[metric_sections]]
+title = "Branch predictor"
+items = [
+  { name = "Branch MPKI", type = "decimal", expr = "br_mis_pred_retired * 1000 / inst_retired" },
+]
+
+[[metric_sections]]
+title = "Memory access latency"
+items = [
+  { name = "Memory read latency", type = "cycles", expr = "mem_access_rd_percyc / mem_access_rd" },
+  { name = "DTLB walk latency",   type = "cycles", expr = "dtlb_walk_percyc / dtlb_walk" },
+  { name = "ITLB walk latency",   type = "cycles", expr = "itlb_walk_percyc / itlb_walk" },
+]

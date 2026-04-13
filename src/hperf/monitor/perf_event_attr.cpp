@@ -1,4 +1,4 @@
-#include "hperf/monitor/perf_event_attr.hpp"
+#include "hperf/monitor/perf_event_attr.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -9,11 +9,11 @@
 #include <string_view>
 #include <system_error>
 
-#include "hperf/monitor/monitor_util.hpp"
+#include "hperf/monitor/monitor_util.h"
 
 PerfEventAttr::PerfEventAttr() {
-  ::memset(&attr, 0, sizeof(attr));
-  attr.size = sizeof(attr);
+  ::memset(&attr_, 0, sizeof(attr_));
+  attr_.size = sizeof(attr_);
 }
 
 std::error_code PerfEventAttr::set_type(const fs::path& type_path) {
@@ -22,7 +22,7 @@ std::error_code PerfEventAttr::set_type(const fs::path& type_path) {
   if (read_err) {
     return read_err;
   }
-  auto conv_errc = MonitorUtil::string2integer(type_result, attr.type);
+  auto conv_errc = MonitorUtil::string2integer(type_result, attr_.type);
   if (conv_errc != std::errc()) {
     return std::make_error_code(conv_errc);
   }
@@ -30,7 +30,6 @@ std::error_code PerfEventAttr::set_type(const fs::path& type_path) {
 }
 
 std::error_code PerfEventAttr::add_event(const fs::path& event_path) {
-  // printf("event_path '%s'\n", event_path.string().c_str());
   auto device_name_it = std::find(event_path.begin(), event_path.end(), "devices");
   if (device_name_it == event_path.end() || ++device_name_it == event_path.end()) {
     return std::make_error_code(std::errc::invalid_argument);
@@ -70,18 +69,20 @@ std::error_code PerfEventAttr::add_field(const fs::path& field_path, uint64_t fi
   size_t start_parse_position = 8;
   switch (buffer[6]) {
     case ':':
-      config_ptr = &attr.config;
+      config_ptr = &attr_.config;
       start_parse_position = 7;
       break;
     case '1':
-      config_ptr = &attr.config1;
+      config_ptr = &attr_.config1;
       break;
     case '2':
-      config_ptr = &attr.config2;
+      config_ptr = &attr_.config2;
       break;
     case '3':
-      config_ptr = &attr.config3;
+      config_ptr = &attr_.config3;
       break;
+    default:
+      return std::make_error_code(std::errc::invalid_argument);
   }
   // add field bits to the config
   uint8_t accumulated_offset = 0;
@@ -101,7 +102,6 @@ std::error_code PerfEventAttr::add_field(const fs::path& field_path, uint64_t fi
       next_comma_sign_position = buffer.size();
     }
     // parse the first bits position and the second one
-    // return error when failed
     uint8_t start_bit, end_bit;
     auto start_ec = MonitorUtil::string2integer(
         {buffer.data() + start_parse_position, next_to_sign_position - start_parse_position},
@@ -112,16 +112,14 @@ std::error_code PerfEventAttr::add_field(const fs::path& field_path, uint64_t fi
     auto end_ec = MonitorUtil::string2integer(
         {buffer.data() + second_num_start_position, next_comma_sign_position - second_num_start_position},
         end_bit);
-    if (start_ec != std::errc()) {
+    if (end_ec != std::errc()) {
       return std::make_error_code(end_ec);
     }
-    // add field.
-    // A field may be seperated into several part, add one part each time
+    // add field
     uint8_t bits_length = end_bit - start_bit + 1;
     *config_ptr |=
-        ((field_val >> accumulated_offset)                   // remove the bits that have been added to config
-         & (UINT64_MAX >> std::max(0, (64 - bits_length))))  // mask, get the needed bits
-        << start_bit;                                        // move the bits to the correct position
+        ((field_val >> accumulated_offset) & (UINT64_MAX >> std::max(0, (64 - bits_length))))
+        << start_bit;
     accumulated_offset += bits_length;
     start_parse_position = next_comma_sign_position + 1;
   }
@@ -196,14 +194,9 @@ std::error_code PerfEventAttr::parse_param(std::string_view event_str) {
 }
 
 std::error_code PerfEventAttr::parse_attr_from(std::string_view event_str) {
-  // check whether the event string is right format
-  // only device/param1=...,param2,.../ is avaliable now
-  // maybe will be compatible to perf later
   auto param_left_border = event_str.find('/');
   if (param_left_border == std::string::npos || event_str.find('/', param_left_border + 1) != event_str.size() - 1) {
     return std::make_error_code(std::errc::invalid_argument);
   }
-
-  // parse
   return parse_param(event_str);
 }

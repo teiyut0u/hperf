@@ -1,4 +1,4 @@
-#include "hperf/monitor/general_monitor.hpp"
+#include "hperf/monitor/general_monitor.h"
 
 #include <linux/perf_event.h>
 
@@ -9,7 +9,7 @@
 #include <tuple>
 #include <utility>
 
-#include "hperf/monitor/event_controller/event_controller_interface.hpp"
+#include "hperf/monitor/event_controller_interface.h"
 
 std::errc GeneralMonitor::set_controller(
     std::vector<std::unique_ptr<EventControllerInterface>>&& controller_ptr_vec) {
@@ -39,7 +39,7 @@ std::errc GeneralMonitor::add_controller(std::vector<std::unique_ptr<EventContro
       return std::errc::invalid_argument;
     }
     size_t controller_size = controller_ptr->size();
-    this->event_monitor_vec_.emplace_back(
+    event_monitor_vec_.emplace_back(
         std::move(controller_ptr),
         std::make_tuple(
             std::vector<uint64_t>(controller_size, 0), 0, 0));
@@ -53,7 +53,7 @@ std::errc GeneralMonitor::add_controller(std::unique_ptr<EventControllerInterfac
     return std::errc::invalid_argument;
   }
   size_t controller_size = controller_ptr->size();
-  this->event_monitor_vec_.emplace_back(
+  event_monitor_vec_.emplace_back(
       std::move(controller_ptr),
       std::make_tuple(
           std::vector<uint64_t>(controller_size, 0), 0, 0));
@@ -118,7 +118,7 @@ std::error_code GeneralMonitor::get_scaled_count(
     }
   }
   // add scaled count
-  this->add_scaled_count(scaled_count_vec);
+  add_scaled_count(scaled_count_vec);
   return {};
 }
 
@@ -133,7 +133,7 @@ void GeneralMonitor::add_scaled_count(std::vector<uint64_t>& scaled_count_vec) {
                  *controller_ptr->time_running() - prev_time_running;
     prev_time_enabled = *controller_ptr->time_enabled();
     prev_time_running = *controller_ptr->time_running();
-    // get all delta value,scale, and update prev
+    // get all delta value, scale, and update prev
     auto all_current_value = controller_ptr->all_value();
     for (size_t i = 0; i < all_current_value.size(); ++i) {
       uint64_t scaled_count;

@@ -1,0 +1,51 @@
+# Ustress evaluation PMU events configuration
+# Applicable SoC platforms: SM8750 (Oryon)
+# Note: This configuration replicates the ustress accuracy evaluation.
+# See https://mi.feishu.cn/docx/DrQVdjUySobKqXxXMLpcRiw3nqh
+
+[cpu]
+name = "ustress"
+
+# ── Fixed events (always measured) ─────────────────────────────────────────
+[[fixed_events]]
+name        = "cpu_cycles"
+description = "Cycle"
+encoding    = 0x11
+
+# ── Schedulable event groups ────────────────────────────────────────────────
+[[event_groups]]
+events = [
+  { name = "br_immed_retired",          description = "Instruction architecturally executed; Condition code check pass; immediate branch",                      encoding = 0x0d   },
+  { name = "br_mis_pred_retired",       description = "Instruction architecturally executed, mispredicted branch",                                             encoding = 0x22   },
+  { name = "br_retired",                description = "Instruction architecturally executed, branch",                                                          encoding = 0x21   },
+  { name = "inst_spec",                 description = "Operation Speculatively executed",                                                                      encoding = 0x1b   },
+  { name = "inst_retired",              description = "Instruction architecturally executed",                                                                  encoding = 0x08   },
+  { name = "br_indnr_mis_pred_retired", description = "Instruction architecturally executed, mispredicted indirect branch excluding procedure return",         encoding = 0x8117 },
+  { name = "br_return_retired",         description = "Instruction architecturally executed, Condition code check pass, procedure return",                     encoding = 0x0e   },
+  { name = "l2d_cache_miss",            description = "L<n>D_CACHE_MISS, Level 2 data cache demand access miss",                                              encoding = 0x814c },
+  { name = "l1i_cache_refill",          description = "Level 1 instruction cache refill",                                                                     encoding = 0x01   },
+  { name = "ld_retired",                description = "Instruction architecturally executed, Condition code check pass, load",                                 encoding = 0x06   },
+]
+
+[[event_groups]]
+events = [
+  { name = "l1d_tlb_refill",  description = "L<n>D_TLB_REFILL, Level 1 data TLB refill",                                  encoding = 0x05   },
+  { name = "isb_spec",        description = "Barrier speculatively executed, ISB",                                         encoding = 0x7c   },
+  { name = "dp_spec",         description = "Operation speculatively executed, integer data processing",                   encoding = 0x73   },
+  { name = "vfp_spec",        description = "Operation speculatively executed, floating-point instruction",                encoding = 0x75   },
+  { name = "ld_spec",         description = "Operation speculatively executed, load",                                      encoding = 0x70   },
+  { name = "st_spec",         description = "Operation speculatively executed, store",                                     encoding = 0x71   },
+  { name = "l1d_cache_miss",  description = "L<n>D_CACHE_MISS, Level 1 data cache demand access miss",                    encoding = 0x8144 },
+  { name = "l1d_cache",       description = "L<n>D_CACHE, Level 1 data cache access",                                     encoding = 0x04   },
+  { name = "l1d_cache_wr",    description = "L<n>D_CACHE_WR, Level 1 data cache access, write",                          encoding = 0x41   },
+  { name = "st_retired",      description = "Instruction architecturally executed, Condition code check pass, store",     encoding = 0x07   },
+]
+
+# ── Performance metrics ─────────────────────────────────────────────────────
+[[metric_sections]]
+title = "Ustress accuracy metrics"
+items = [
+  { name = "br_mis_pred_retired / br_retired", type = "percentage", expr = "br_mis_pred_retired / br_retired" },
+  { name = "inst_spec / inst_retired",         type = "decimal",    expr = "inst_spec / inst_retired" },
+  { name = "l1d_cache_miss / l1d_cache",       type = "decimal",    expr = "l1d_cache_miss / l1d_cache" },
+]

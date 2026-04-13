@@ -5,9 +5,9 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
-#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <ostream>
@@ -30,42 +30,48 @@ void CounterDetector::detect() {
   }
 
   for (uint64_t cpu_id = 0; cpu_id < cpu_num_; ++cpu_id) {  // for each CPU
-    // Stress test: guadually increase the number of events (up to 32), and see when multiplexing is triggered:
+    // Stress test: gradually increase the number of events (up to 32), and see when multiplexing is triggered:
     for (uint64_t event_num = 1; event_num < event_list.size(); ++event_num) {
-      if (!test(cpu_id, event_num)) {  // if multiplexing is triggered
+      CounterDetector::TestResult r = test(cpu_id, event_num);
+      if (r == CounterDetector::TestResult::kMuxDetected) {
         detected_general_counter_nums_[cpu_id] = event_num - 1;
-        break;  // stop stress test on this CPU
+        break;
+      } else if (r == CounterDetector::TestResult::kError) {
+        break;  // leave detected_general_counter_nums_[cpu_id] as -1
       }
     }
+    // If all test events fit without multiplexing, record the full probe count
+    if (detected_general_counter_nums_[cpu_id] == -1) {
+      detected_general_counter_nums_[cpu_id] = static_cast<int>(event_list.size() - 1);
+    }
     close_all_events();
-    fds_.clear();
   }
   detected_ = true;
   save_detected_result();
 }
 
-bool CounterDetector::test(uint64_t cpu_id, uint64_t event_num) {
+CounterDetector::TestResult CounterDetector::test(uint64_t cpu_id, uint64_t event_num) {
   // Ensure fds_ has enough capacity for event_num events
   while (fds_.size() < event_num) {
     struct perf_event_attr pe;
-    configure_event(&pe, event_list[fds_.size()].second);
+    configure_event(pe, event_list[fds_.size()].second);
     int fd = perf_event_open(&pe, cpu_id);
     if (fd == -1) {
-      std::cerr << "Failed to create event " << event_list[fds_.size()].first << " on CPU " << cpu_id << std::endl;
-      return false;
+      std::cerr << "Failed to create event " << event_list[fds_.size()].first << " on CPU " << cpu_id << '\n';
+      return TestResult::kError;
     }
     fds_.push_back(fd);
   }
 
   // Enable all events and check for multiplexing
   if (!enable_all_events()) {
-    return false;
+    return TestResult::kError;
   }
 
   usleep(100000);  // Sleep for 100ms
 
   if (!disable_all_events()) {
-    return false;
+    return TestResult::kError;
   }
 
   // Read and check if multiplexing occurred
@@ -73,25 +79,24 @@ bool CounterDetector::test(uint64_t cpu_id, uint64_t event_num) {
   for (int fd : fds_) {
     ssize_t bytes_read = read(fd, buffer.data(), buffer.size());
     if (bytes_read == -1) {
-      std::cerr << "Failed to read data for event: " << strerror(errno) << std::endl;
-      return false;
+      std::cerr << "Failed to read data for event: " << strerror(errno) << '\n';
+      return TestResult::kError;
     } else if (static_cast<size_t>(bytes_read) != buffer.size()) {
-      std::cerr << "Warning: Read " << bytes_read << " bytes, expected " << buffer.size() << std::endl;
+      std::cerr << "Warning: Read " << bytes_read << " bytes, expected " << buffer.size() << '\n';
     } else {
       if (buffer.time_enabled() != buffer.time_running()) {  // Multiplexing detected
-        return false;
+        return TestResult::kMuxDetected;
       }
     }
   }
 
-  // For all events, time_enabled == time_running, return true
-  return true;
+  return TestResult::kNoMux;
 }
 
 bool CounterDetector::enable_all_events() {
   for (const int fd : fds_) {
     if (ioctl(fd, PERF_EVENT_IOC_ENABLE, 0) == -1) {
-      std::cerr << "Failed to enable event: " << strerror(errno) << std::endl;
+      std::cerr << "Failed to enable event: " << strerror(errno) << '\n';
       return false;
     }
   }
@@ -101,7 +106,7 @@ bool CounterDetector::enable_all_events() {
 bool CounterDetector::disable_all_events() {
   for (const int fd : fds_) {
     if (ioctl(fd, PERF_EVENT_IOC_DISABLE, 0) == -1) {
-      std::cerr << "Failed to disable event: " << strerror(errno) << std::endl;
+      std::cerr << "Failed to disable event: " << strerror(errno) << '\n';
       return false;
     }
   }
@@ -114,15 +119,16 @@ void CounterDetector::close_all_events() {
       close(fd);
     }
   }
+  fds_.clear();
 }
 
 int CounterDetector::get_detected_general_counter_num(uint64_t cpu_id) const {
   if (!detected_) {
-    std::cerr << "The number of avaliable programmable counters is undetected" << std::endl;
+    std::cerr << "The number of available programmable counters is undetected" << '\n';
     return -1;
   }
   if (cpu_id >= cpu_num_) {
-    std::cerr << "CPU ID is out-of-bound" << std::endl;
+    std::cerr << "CPU ID is out-of-bound" << '\n';
     return -1;
   }
   return detected_general_counter_nums_[cpu_id];
@@ -130,7 +136,7 @@ int CounterDetector::get_detected_general_counter_num(uint64_t cpu_id) const {
 
 int CounterDetector::get_detected_general_counter_num() const {
   if (!detected_) {
-    std::cerr << "The number of avaliable programmable counters is undetected" << std::endl;
+    std::cerr << "The number of available programmable counters is undetected" << '\n';
     return -1;
   }
   return *std::min_element(detected_general_counter_nums_.begin(),
@@ -139,27 +145,26 @@ int CounterDetector::get_detected_general_counter_num() const {
 
 void CounterDetector::print_result() const {
   if (!detected_) {
-    std::cerr << "The number of avaliable programmable counters is undetected" << std::endl;
+    std::cerr << "The number of available programmable counters is undetected" << '\n';
     return;
   }
   for (uint64_t cpu_id = 0; cpu_id < cpu_num_; ++cpu_id) {
     if (detected_general_counter_nums_[cpu_id] > 0) {
-      std::cout << detected_general_counter_nums_[cpu_id] << " available programmable counters on CPU " << cpu_id << std::endl;
+      std::cout << detected_general_counter_nums_[cpu_id] << " available programmable counters on CPU " << cpu_id << '\n';
     } else {
-      std::cout << "Undetected on CPU " << cpu_id << std::endl;
+      std::cout << "Undetected on CPU " << cpu_id << '\n';
     }
   }
 }
 
-void CounterDetector::configure_event(struct perf_event_attr *pe,
+void CounterDetector::configure_event(struct perf_event_attr &pe,
                                       uint64_t encoding) {
-  memset(pe, 0, sizeof(struct perf_event_attr));
-
-  pe->type = PERF_TYPE_RAW;
-  pe->size = sizeof(struct perf_event_attr);
-  pe->config = encoding;
-  pe->read_format = PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING | PERF_FORMAT_ID;
-  pe->disabled = 1;
+  pe = {};
+  pe.type = PERF_TYPE_RAW;
+  pe.size = sizeof(struct perf_event_attr);
+  pe.config = encoding;
+  pe.read_format = PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING | PERF_FORMAT_ID;
+  pe.disabled = 1;
 }
 
 int CounterDetector::perf_event_open(struct perf_event_attr *pe,
@@ -176,12 +181,12 @@ int CounterDetector::perf_event_open(struct perf_event_attr *pe,
 void CounterDetector::save_detected_result() const {
   std::ofstream outfile("/tmp/.hperf");
   if (!outfile.is_open()) {
-    std::cerr << "Failed to create /tmp/.hperf" << std::endl;
+    std::cerr << "Failed to create /tmp/.hperf" << '\n';
     return;
   }
 
-  for (const auto& counter_num : detected_general_counter_nums_) {
-    outfile << counter_num << std::endl;
+  for (const auto &counter_num : detected_general_counter_nums_) {
+    outfile << counter_num << '\n';
   }
 
   outfile.close();
@@ -200,14 +205,20 @@ bool CounterDetector::load_detected_result() {
   }
 
   infile.close();
-  
+
   if (detected_general_counter_nums_.size() == cpu_num_) {
+    for (int n : detected_general_counter_nums_) {
+      if (n <= 0) {
+        detected_general_counter_nums_.clear();
+        detected_general_counter_nums_.resize(cpu_num_, -1);
+        return false;
+      }
+    }
     detected_ = true;
     return true;
   }
-  
+
   detected_general_counter_nums_.clear();
   detected_general_counter_nums_.resize(cpu_num_, -1);
   return false;
 }
-

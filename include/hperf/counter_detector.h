@@ -1,9 +1,10 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
-#include <string>
 
 class CounterDetector {
  public:
@@ -11,17 +12,34 @@ class CounterDetector {
 
   ~CounterDetector();
 
+  CounterDetector(const CounterDetector &) = delete;
+  CounterDetector &operator=(const CounterDetector &) = delete;
+
   /**
-   * @brief Detect the number of available progammable counters on each CPU.
+   * @brief Detect the number of available programmable counters on each CPU.
    * Then the detected result can be obtained by `get_detected_general_counter_num()`
-   * 
+   *
    */
   void detect();
 
+  /**
+   * @brief Return the number of detected general-purpose programmable counters on the given CPU.
+   *        Returns -1 if detect() has not been called or cpu_id is out of range.
+   *
+   * @param cpu_id CPU index (0-based).
+   */
   int get_detected_general_counter_num(uint64_t cpu_id) const;
 
-  int get_detected_general_counter_num() const; 
+  /**
+   * @brief Return the minimum detected programmable counter count across all CPUs.
+   *        Use this as a conservative budget when grouping events.
+   *        Returns -1 if detect() has not been called.
+   */
+  int get_detected_general_counter_num() const;
 
+  /**
+   * @brief Print the detected counter count for each CPU to stdout.
+   */
   void print_result() const;
 
   /**
@@ -36,6 +54,10 @@ class CounterDetector {
   bool load_detected_result();
 
  private:
+  enum class TestResult { kNoMux,
+                          kMuxDetected,
+                          kError };
+
   bool detected_;
 
   std::vector<int> fds_;
@@ -44,21 +66,22 @@ class CounterDetector {
 
   std::vector<int> detected_general_counter_nums_;
 
-  static void configure_event(struct perf_event_attr *pe,
+  static void configure_event(struct perf_event_attr &pe,
                               uint64_t encoding);
 
   static int perf_event_open(struct perf_event_attr *pe,
                              int cpu);
 
   /**
-   * @brief Test on a specified CPU: try to measure multiple events simultaneously and determine whether the multiplexing is triggered.  
-   * 
+   * @brief Test on a specified CPU: try to measure multiple events simultaneously and determine whether the multiplexing is triggered.
+   *
    * @param cpu_id CPU ID
    * @param event_num The number of events for this test
-   * @return true Multiplexing is triggered
-   * @return false Multiplexing is not triggered
+   * @return kNoMux      All events fit without multiplexing
+   * @return kMuxDetected Multiplexing was triggered (counter limit reached)
+   * @return kError       perf_event_open or ioctl syscall failed
    */
-  bool test(uint64_t cpu_id, uint64_t event_num);
+  TestResult test(uint64_t cpu_id, uint64_t event_num);
 
   bool enable_all_events();
 
